@@ -25,9 +25,9 @@ export interface Analysis {
 
 // ─── Repository Profile ───────────────────────────────────────────────────────
 
-export type Language = 'typescript' | 'javascript' | 'mixed' | 'unknown';
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'unknown';
-export type TestFramework = 'jest' | 'vitest' | 'mocha' | 'jasmine' | 'ava' | 'unknown';
+export type Language = 'typescript' | 'javascript' | 'mixed' | 'python' | 'java' | 'go' | 'rust' | 'ruby' | 'php' | 'c++' | 'unknown';
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'maven' | 'gradle' | 'cargo' | 'go-modules' | 'bundler' | 'composer' | 'unknown';
+export type TestFramework = 'jest' | 'vitest' | 'mocha' | 'jasmine' | 'ava' | 'pytest' | 'unittest' | 'junit' | 'cargo-test' | 'go-test' | 'rspec' | 'phpunit' | 'unknown';
 
 export interface RepositoryProfile {
   name: string;

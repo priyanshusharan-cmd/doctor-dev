@@ -109,7 +109,8 @@ export function analyzeCode(
   const symbols: CodeSymbol[] = [];
   const routes: RouteInfo[] = [];
 
-  if (sourceFiles.length === 0) return { symbols, routes };
+  const jsTsFiles = sourceFiles.filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(f));
+  if (jsTsFiles.length === 0) return { symbols, routes };
 
   // ts-morph project — we add files manually, no tsconfig needed
   const project = new Project({
@@ -119,7 +120,7 @@ export function analyzeCode(
   });
 
   // Only analyse up to 150 source files to keep performance reasonable
-  const filesToAnalyze = sourceFiles.slice(0, 150);
+  const filesToAnalyze = jsTsFiles.slice(0, 150);
 
   for (const rel of filesToAnalyze) {
     const abs = path.join(repoPath, rel);
