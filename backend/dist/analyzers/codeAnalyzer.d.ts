@@ -1,4 +1,5 @@
-import type { CodeSymbol, RouteInfo } from '../types';
+import type { CodeSymbol, RouteInfo, SourceType } from '../types';
+export declare function getSourceType(filePath: string): SourceType;
 /**
  * Analyse JavaScript/TypeScript source files in a repository using AST.
  * Returns CodeSymbols and RouteInfo arrays.

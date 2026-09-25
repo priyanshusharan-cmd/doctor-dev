@@ -80,7 +80,13 @@ function resolveRepoPath(inputPath) {
 }
 /** Return the directory name as the project name. */
 function repoName(repoPath) {
-    return path_1.default.basename(repoPath);
+    const base = path_1.default.basename(repoPath);
+    // Match doctor-dev-{userName}-{repoName}-{randomString}
+    const match = base.match(/^doctor-dev-(.+)-(.+)-[a-zA-Z0-9]+$/);
+    if (match) {
+        return `${match[1]}/${match[2]}`;
+    }
+    return base;
 }
 /**
  * Read a file safely.

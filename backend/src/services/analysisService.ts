@@ -9,7 +9,7 @@ import { runTests, detectTestScript } from '../runners/testRunner';
 import { buildPriorityFindings, calculateHealthScore } from './prioritizationService';
 import { createAnalysis, setStatus, setResult, setError } from '../models/analysisStore';
 import { isGitHubUrl, cloneGitHubRepo, cleanupClone } from './githubService';
-import type { AnalysisResult, AnalysisStatus } from '../types';
+import type { AnalysisResult, AnalysisStatus, TestProfile } from '../types';
 
 const STATUS_LABELS: Record<AnalysisStatus, string> = {
   pending:          'Waiting to start',
@@ -120,7 +120,7 @@ async function runPipeline(
       repositoryProfile.sourceFiles.length,
       testGaps,
       configHealth.issues,
-      repositoryProfile.testFiles.length,
+      testProfile as TestProfile,
     );
 
     // ── 8. Serialize + store ──────────────────────────────────────────────

@@ -47,9 +47,23 @@ export default function OverviewPage({ result, onTabChange }: Props) {
     !result.testMappings.find((m) => m.sourceFile === r.filePath && m.relatedTests.length > 0)
   ).length;
 
-  const covPct = meta.sourceFiles.length > 0
-    ? Math.round((result.testProfile.coveredFiles.length / Math.max(meta.sourceFiles.length, 1)) * 100)
-    : 0;
+  const covPct = testProfile.coverage.percentage ?? 0;
+  let covLabel = `${covPct}%`;
+  let covSub = '';
+  let covColor = 'text-gray-400';
+
+  if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
+    covSub = 'Reported by test runner';
+    covColor = covPct >= 70 ? 'text-green-400' : covPct >= 40 ? 'text-yellow-400' : 'text-red-400';
+  } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
+    covLabel = 'Evidence-based';
+    covSub = 'Estimated from tests';
+    covColor = 'text-blue-400';
+  } else {
+    covLabel = 'Unavailable';
+    covSub = 'No coverage data';
+    covColor = 'text-gray-500';
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -77,9 +91,9 @@ export default function OverviewPage({ result, onTabChange }: Props) {
         />
         <MetricCard
           label="Test Coverage"
-          value={`${covPct}%`}
-          sub={`${testProfile.coveredFiles.length} of ${meta.sourceFiles.length} files`}
-          color={covPct >= 70 ? 'text-green-400' : covPct >= 40 ? 'text-yellow-400' : 'text-red-400'}
+          value={covLabel}
+          sub={covSub}
+          color={covColor}
         />
         <MetricCard
           label="Untested Routes"

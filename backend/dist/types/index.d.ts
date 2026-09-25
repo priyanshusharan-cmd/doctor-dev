@@ -9,9 +9,9 @@ export interface Analysis {
     error?: string;
     result?: AnalysisResult;
 }
-export type Language = 'typescript' | 'javascript' | 'mixed' | 'unknown';
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'unknown';
-export type TestFramework = 'jest' | 'vitest' | 'mocha' | 'jasmine' | 'ava' | 'unknown';
+export type Language = 'typescript' | 'javascript' | 'mixed' | 'python' | 'java' | 'go' | 'rust' | 'ruby' | 'php' | 'c++' | 'unknown';
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'maven' | 'gradle' | 'cargo' | 'go-modules' | 'bundler' | 'composer' | 'unknown';
+export type TestFramework = 'jest' | 'vitest' | 'mocha' | 'jasmine' | 'ava' | 'pytest' | 'unittest' | 'junit' | 'cargo-test' | 'go-test' | 'rspec' | 'phpunit' | 'unknown';
 export interface RepositoryProfile {
     name: string;
     description?: string;
@@ -36,10 +36,12 @@ export interface RepositoryProfile {
 }
 export type SymbolKind = 'function' | 'class' | 'method' | 'arrow_function' | 'export' | 'route_handler' | 'middleware' | 'controller' | 'service' | 'utility';
 export type SymbolImportance = 'critical' | 'high' | 'medium' | 'low';
+export type SourceType = 'production' | 'examples' | 'benchmarks' | 'fixtures' | 'tests' | 'documentation' | 'generated' | 'build' | 'configuration';
 export interface CodeSymbol {
     name: string;
     kind: SymbolKind;
     filePath: string;
+    sourceType: SourceType;
     lineStart: number;
     lineEnd: number;
     isExported: boolean;
@@ -52,6 +54,7 @@ export interface RouteInfo {
     method: string;
     path: string;
     filePath: string;
+    sourceType: SourceType;
     handlerName?: string;
     line: number;
 }
@@ -69,8 +72,9 @@ export interface TestProfile {
     suites: TestSuite[];
     coveredFiles: Set<string>;
     detectedTestScript?: string;
+    coverage: CoverageInfo;
 }
-export type CoverageStatus = 'covered' | 'partial' | 'none';
+export type CoverageStatus = 'DIRECTLY_TESTED' | 'INDIRECTLY_TESTED' | 'PARTIALLY_TESTED' | 'NOT_ENOUGH_EVIDENCE' | 'NOT_TESTED';
 export interface TestMapping {
     sourceFile: string;
     sourceSymbol?: string;
@@ -78,6 +82,13 @@ export interface TestMapping {
     coverageStatus: CoverageStatus;
     /** 0–1 confidence that the mapping is correct */
     confidence: number;
+    evidence: string[];
+}
+export type GlobalCoverageStatus = 'ACTUAL_COVERAGE' | 'EVIDENCE_BASED' | 'UNAVAILABLE';
+export interface CoverageInfo {
+    status: GlobalCoverageStatus;
+    percentage?: number;
+    reason: string;
 }
 export type GapSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type GapCategory = 'no_test' | 'missing_error_test' | 'missing_edge_case' | 'missing_auth_test' | 'missing_integration_test' | 'partial_test';

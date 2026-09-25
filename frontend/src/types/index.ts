@@ -77,15 +77,32 @@ export interface TestSuite {
   importsUnder: string[];
 }
 
+export type GlobalCoverageStatus =
+  | 'ACTUAL_COVERAGE'
+  | 'EVIDENCE_BASED'
+  | 'UNAVAILABLE';
+
+export interface CoverageInfo {
+  status: GlobalCoverageStatus;
+  percentage?: number;
+  reason: string;
+}
+
 export interface TestProfile {
   totalTestFiles: number;
   totalTestCount: number;
   suites: TestSuite[];
   coveredFiles: string[];
   detectedTestScript?: string;
+  coverage: CoverageInfo;
 }
 
-export type CoverageStatus = 'covered' | 'partial' | 'none';
+export type CoverageStatus =
+  | 'DIRECTLY_TESTED'
+  | 'INDIRECTLY_TESTED'
+  | 'PARTIALLY_TESTED'
+  | 'NOT_ENOUGH_EVIDENCE'
+  | 'NOT_TESTED';
 
 export interface TestMapping {
   sourceFile: string;
@@ -93,6 +110,7 @@ export interface TestMapping {
   relatedTests: string[];
   coverageStatus: CoverageStatus;
   confidence: number;
+  evidence: string[];
 }
 
 export type GapSeverity = 'critical' | 'high' | 'medium' | 'low';

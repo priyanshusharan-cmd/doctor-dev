@@ -1,7 +1,7 @@
 import path from 'path';
 import { Project, SyntaxKind } from 'ts-morph';
 import { relativePath } from '../utils/security';
-import type { CodeSymbol, RouteInfo, SymbolKind, SymbolImportance } from '../types';
+import type { CodeSymbol, RouteInfo, SymbolKind, SymbolImportance, SourceType } from '../types';
 
 // ─── Importance signals ───────────────────────────────────────────────────────
 
@@ -17,6 +17,7 @@ function scoreSymbol(
   bodyText: string,
   isExported: boolean,
   paramCount: number,
+  sourceType: SourceType,
 ): { importance: SymbolImportance; reasons: string[] } {
   const reasons: string[] = [];
   let score = 0;
@@ -36,6 +37,12 @@ function scoreSymbol(
   if (/\/(services?|usecases?|domain)\//i.test(filePath)) { reasons.push('service layer'); score += 1; }
   if (/\/(middleware|guards?)\//i.test(filePath)) { reasons.push('middleware'); score += 1; }
 
+  // Penalize non-production code
+  if (sourceType === 'examples' || sourceType === 'fixtures' || sourceType === 'benchmarks' || sourceType === 'documentation') {
+    score -= 5;
+    reasons.push(`${sourceType} code`);
+  }
+
   const importance: SymbolImportance =
     score >= 5 ? 'critical' :
     score >= 3 ? 'high' :
@@ -43,6 +50,19 @@ function scoreSymbol(
     'low';
 
   return { importance, reasons: reasons.slice(0, 4) };
+}
+
+export function getSourceType(filePath: string): SourceType {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  if (/(^|\/)(examples?|samples?)\//.test(normalized)) return 'examples';
+  if (/(^|\/)benchmarks?\//.test(normalized)) return 'benchmarks';
+  if (/(^|\/)fixtures?\//.test(normalized)) return 'fixtures';
+  if (/(^|\/)docs?\//.test(normalized)) return 'documentation';
+  if (/(^|\/)(tests?|__tests__|specs?)\//.test(normalized) || /\.(test|spec)\./.test(normalized)) return 'tests';
+  if (/(^|\/)generated\//.test(normalized)) return 'generated';
+  if (/(^|\/)(build|scripts?|tools?)\//.test(normalized)) return 'build';
+  if (/(^|\/)configs?\//.test(normalized) || filePath.includes('.config.')) return 'configuration';
+  return 'production';
 }
 
 function kindFromFilePath(filePath: string): SymbolKind {
@@ -56,6 +76,7 @@ function kindFromFilePath(filePath: string): SymbolKind {
 function extractRoutes(sourceFile: ReturnType<InstanceType<typeof Project>['addSourceFileAtPath']>, repoRoot: string): RouteInfo[] {
   const routes: RouteInfo[] = [];
   const filePath = relativePath(repoRoot, sourceFile.getFilePath());
+  const sourceType = getSourceType(filePath);
 
   sourceFile.forEachDescendant((node) => {
     if (node.getKind() !== SyntaxKind.CallExpression) return;
@@ -92,7 +113,7 @@ function extractRoutes(sourceFile: ReturnType<InstanceType<typeof Project>['addS
       }
     }
 
-    routes.push({ method, path: routePath, filePath, handlerName, line });
+    routes.push({ method, path: routePath, filePath, sourceType, handlerName, line });
   });
 
   return routes;
@@ -133,6 +154,7 @@ export function analyzeCode(
 
   for (const sourceFile of project.getSourceFiles()) {
     const filePath = relativePath(repoPath, sourceFile.getFilePath());
+    const sourceType = getSourceType(filePath);
 
     // ── Routes ────────────────────────────────────────────────────────────────
     routes.push(...extractRoutes(sourceFile, repoPath));
@@ -145,7 +167,7 @@ export function analyzeCode(
       const body = fn.getBodyText() ?? '';
       const isExported = fn.isExported() || fn.isDefaultExport();
       const params = fn.getParameters().length;
-      const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params);
+      const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params, sourceType);
       const start = fn.getStartLineNumber();
       const end = fn.getEndLineNumber();
 
@@ -153,6 +175,7 @@ export function analyzeCode(
         name,
         kind: kindFromFilePath(filePath),
         filePath,
+        sourceType,
         lineStart: start,
         lineEnd: end,
         isExported,
@@ -170,12 +193,13 @@ export function analyzeCode(
 
       const isExported = cls.isExported() || cls.isDefaultExport();
       const clsBody = cls.getMembers().map((m) => m.getText()).join(' ');
-      const { importance, reasons } = scoreSymbol(name, filePath, clsBody, isExported, 0);
+      const { importance, reasons } = scoreSymbol(name, filePath, clsBody, isExported, 0, sourceType);
 
       symbols.push({
         name,
         kind: 'class',
         filePath,
+        sourceType,
         lineStart: cls.getStartLineNumber(),
         lineEnd: cls.getEndLineNumber(),
         isExported,
@@ -192,13 +216,14 @@ export function analyzeCode(
         const mExported = isExported; // methods inherit class export
         const mParams = method.getParameters().length;
         const { importance: mImp, reasons: mReasons } = scoreSymbol(
-          `${name}.${mName}`, filePath, mBody, mExported, mParams
+          `${name}.${mName}`, filePath, mBody, mExported, mParams, sourceType
         );
 
         symbols.push({
           name: `${name}.${mName}`,
           kind: 'method',
           filePath,
+          sourceType,
           lineStart: method.getStartLineNumber(),
           lineEnd: method.getEndLineNumber(),
           isExported: mExported,
@@ -227,12 +252,13 @@ export function analyzeCode(
         init.getKind() === SyntaxKind.ArrowFunction
           ? (init.asKind(SyntaxKind.ArrowFunction)?.getParameters().length ?? 0)
           : (init.asKind(SyntaxKind.FunctionExpression)?.getParameters().length ?? 0);
-      const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params);
+      const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params, sourceType);
 
       symbols.push({
         name,
         kind: 'arrow_function',
         filePath,
+        sourceType,
         lineStart: decl.getStartLineNumber(),
         lineEnd: decl.getEndLineNumber(),
         isExported,

@@ -15,9 +15,25 @@ export default function TestingPage({ result }: Props) {
   const [sortBy, setSortBy] = useState<SortBy>('severity');
   const [showGenerated, setShowGenerated] = useState(false);
 
-  const coveredCount = testProfile.coveredFiles.length;
+  const covPct = testProfile.coverage.percentage ?? 0;
   const totalSrc = repositoryProfile.sourceFiles.length;
-  const covPct = totalSrc > 0 ? Math.round((coveredCount / totalSrc) * 100) : 0;
+
+  let covLabel = `${covPct}%`;
+  let covSub = '';
+  let covDetails = '';
+
+  if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
+    covSub = 'Reported by test runner';
+    covDetails = `Based on parsed coverage data from the repository.`;
+  } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
+    covLabel = 'Evidence-based';
+    covSub = 'Estimated from tests';
+    covDetails = `Estimated ${covPct}% based on testing evidence.`;
+  } else {
+    covLabel = 'Unavailable';
+    covSub = 'No coverage data';
+    covDetails = testProfile.coverage.reason;
+  }
 
   const untestedRoutes = routes.filter((r) =>
     !result.testMappings.find((m) => m.sourceFile === r.filePath && m.relatedTests.length > 0)
@@ -64,10 +80,10 @@ export default function TestingPage({ result }: Props) {
             </div>
             <div>
               <span className="text-sm font-bold text-gray-200">File Coverage</span>
-              <span className="text-xs text-gray-600 ml-2">(heuristic estimate)</span>
+              <span className="text-xs text-gray-600 ml-2">({covSub})</span>
             </div>
           </div>
-          <span className="text-2xl font-black text-white tabular-nums font-mono">{covPct}%</span>
+          <span className="text-2xl font-black text-white font-mono">{covLabel}</span>
         </div>
         <div className="h-3 rounded-full bg-gray-800/80 overflow-hidden mb-2">
           <div
@@ -76,7 +92,7 @@ export default function TestingPage({ result }: Props) {
           />
         </div>
         <p className="text-xs text-gray-600">
-          {coveredCount} of {totalSrc} source files have detectable test coverage.
+          {covDetails}
           {testProfile.detectedTestScript && (
             <> Test script: <code className="text-gray-400 font-mono">{testProfile.detectedTestScript}</code></>
           )}

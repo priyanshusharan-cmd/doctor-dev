@@ -26,9 +26,17 @@
 - Security: path sanitization, path traversal rejection, secret redaction
 
 ### ✅ Phase 3/4/5 — TestPilot + ConfigDoctor + Unified Pipeline
-**TestPilot**
+### ✅ Phase 6 — Test Evidence Model & Language Adapters (Current)
+- Replaced naive filename matching with Layered Evidence Model (Actual Coverage, Evidence Based, Unavailable)
+- Refactored `CodeSymbol` and `RouteInfo` to track `SourceType` (production, tests, examples, fixtures)
+- Updated gap detection to ignore non-production code and properly downgrade confidence when testing evidence is insufficient
+- Overhauled Health Score algorithm to avoid heavily penalizing mature repositories due to heuristic blindspots
+- Created `LanguageAdapter` architecture for extending support to Python, Java, Go, C++, Rust, C#, PHP (JS/TS & Python stubs implemented)
+- Successfully benchmarked against Express and Fastify to ensure mature projects score realistically
+
+**TestPilot Updates**
 - Test file detection (Jest, Vitest, Mocha)
-- Import-based + filename-based test mapping
+- Evidence-based test mapping using exact name, import trees, and heuristic paths
 - Test gap detection: no_test, missing_error_test, missing_edge_case, missing_auth_test
 - API route gap detection
 - Evidence-based, confidence-scored gaps
@@ -54,7 +62,7 @@
 - TestGapCard: expandable with evidence, reason, recommended tests
 - ConfigIssueCard: expandable with evidence, fix
 - OverviewPage: priority findings + real stats
-- TestingPage: coverage bar, gap list, routes, generated tests, test suites
+- TestingPage: coverage bar reflects `CoverageInfo` (Actual, Evidence Based, Unavailable)
 - ConfigurationPage: issues, env var table, port list, config file strip
 - ValidationPage: test run results + generated test code
 - ReportPage: Markdown + JSON download

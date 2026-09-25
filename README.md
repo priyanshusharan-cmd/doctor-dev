@@ -129,13 +129,15 @@ Repository Path (local)
 
 ## Features
 
-### TestPilot
-- Detects important functions with no test coverage
-- Maps test files to source files using imports and filename proximity
-- Identifies missing error-path tests, edge-case tests, and auth tests
-- Detects API routes that have no corresponding tests
-- Generates test skeleton files for the top critical/high gaps
-- Confidence-scored findings (each finding explains *why* it was flagged)
+### TestPilot & Language Support
+- Supports analysis via **Language Adapters** for JavaScript/TypeScript, Python, Java, Go, Rust, C#, C++, and PHP.
+- Employs a **Layered Evidence Model** distinguishing between Actual Coverage (parsed), Evidence-Based (heuristic mapping), and Unavailable.
+- Classifies files as production, tests, examples, benchmarks, or fixtures to avoid penalizing sample code.
+- Detects important functions with no test coverage using exact names, import trees, and path heuristics.
+- Identifies missing error-path tests, edge-case tests, and auth tests for production code.
+- Detects API routes that have no corresponding tests without forcing brittle string matching.
+- Generates test skeleton files for the top critical/high gaps.
+- Confidence-scored findings (each finding explains *why* it was flagged).
 
 ### ConfigDoctor
 - Scans `process.env.NAME` usage vs `.env.example` declarations

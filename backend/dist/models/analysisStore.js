@@ -25,10 +25,13 @@ function getAnalysis(id) {
 function listAnalyses() {
     return Array.from(store.values()).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }
-function setStatus(id, status) {
+function setStatus(id, status, label) {
     const a = store.get(id);
-    if (a)
+    if (a) {
         a.status = status;
+        if (label !== undefined)
+            a.statusLabel = label;
+    }
 }
 function setResult(id, result) {
     const a = store.get(id);

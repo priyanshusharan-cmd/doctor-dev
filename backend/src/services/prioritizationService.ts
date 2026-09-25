@@ -6,6 +6,7 @@ import type {
   HealthScore,
   HealthState,
   FindingLevel,
+  TestProfile,
 } from '../types';
 
 // ─── Priority Findings ────────────────────────────────────────────────────────
@@ -119,19 +120,28 @@ export function calculateHealthScore(
   totalSourceFiles: number,
   testGaps: TestGap[],
   configIssues: ConfigIssue[],
-  totalTestFiles: number,
+  testProfile: TestProfile,
 ): HealthScore {
-  // Testing score: penalize for gaps, reward for test files
+  // Testing score: penalize for gaps, reward for actual coverage or evidence
   const criticalGaps = testGaps.filter((g) => g.severity === 'critical').length;
   const highGaps = testGaps.filter((g) => g.severity === 'high').length;
   const mediumGaps = testGaps.filter((g) => g.severity === 'medium').length;
 
-  const gapPenalty = criticalGaps * 15 + highGaps * 8 + mediumGaps * 3;
-  const testBonus = totalTestFiles > 0 ? Math.min(30, totalTestFiles * 5) : 0;
-  const coverageBase = totalSourceFiles > 0
-    ? Math.min(70, (totalTestFiles / Math.max(totalSourceFiles, 1)) * 100)
-    : 0;
-  const testing = Math.max(0, Math.min(100, Math.round(coverageBase + testBonus - gapPenalty)));
+  // Penalize confirmed gaps
+  const gapPenalty = criticalGaps * 10 + highGaps * 5 + mediumGaps * 2;
+  
+  let baseScore = 0;
+  if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
+    baseScore = testProfile.coverage.percentage ?? 80;
+  } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
+    baseScore = 70; // Sensible default for mature repos with tests but no report
+  } else if (testProfile.totalTestFiles > 0) {
+    baseScore = 50; // Tests exist but we don't understand them well
+  } else {
+    baseScore = 20; // No tests found at all
+  }
+
+  const testing = Math.max(0, Math.min(100, Math.round(baseScore - gapPenalty)));
 
   // Config score: penalize for issues
   const criticalIssues = configIssues.filter((i) => i.severity === 'critical').length;

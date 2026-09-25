@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getSourceType = getSourceType;
 exports.analyzeCode = analyzeCode;
 const path_1 = __importDefault(require("path"));
 const ts_morph_1 = require("ts-morph");
@@ -13,7 +14,7 @@ const DB_PATTERNS = /\b(db|database|query|model|repository|schema|migration|pris
 const PAYMENT_PATTERNS = /\b(payment|stripe|paypal|checkout|charge|invoice|billing|subscription|plan|price)\b/i;
 const ROUTE_PATTERNS = /\b(router|app|route)\.(get|post|put|patch|delete|use|all)\b/i;
 const CRITICAL_NAMES = /^(main|bootstrap|init|start|setup|configure|createApp|createServer)\b/i;
-function scoreSymbol(name, filePath, bodyText, isExported, paramCount) {
+function scoreSymbol(name, filePath, bodyText, isExported, paramCount, sourceType) {
     const reasons = [];
     let score = 0;
     const combined = `${name} ${filePath} ${bodyText}`;
@@ -58,11 +59,36 @@ function scoreSymbol(name, filePath, bodyText, isExported, paramCount) {
         reasons.push('middleware');
         score += 1;
     }
+    // Penalize non-production code
+    if (sourceType === 'examples' || sourceType === 'fixtures' || sourceType === 'benchmarks' || sourceType === 'documentation') {
+        score -= 5;
+        reasons.push(`${sourceType} code`);
+    }
     const importance = score >= 5 ? 'critical' :
         score >= 3 ? 'high' :
             score >= 1 ? 'medium' :
                 'low';
     return { importance, reasons: reasons.slice(0, 4) };
+}
+function getSourceType(filePath) {
+    const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+    if (/(^|\/)(examples?|samples?)\//.test(normalized))
+        return 'examples';
+    if (/(^|\/)benchmarks?\//.test(normalized))
+        return 'benchmarks';
+    if (/(^|\/)fixtures?\//.test(normalized))
+        return 'fixtures';
+    if (/(^|\/)docs?\//.test(normalized))
+        return 'documentation';
+    if (/(^|\/)(tests?|__tests__|specs?)\//.test(normalized) || /\.(test|spec)\./.test(normalized))
+        return 'tests';
+    if (/(^|\/)generated\//.test(normalized))
+        return 'generated';
+    if (/(^|\/)(build|scripts?|tools?)\//.test(normalized))
+        return 'build';
+    if (/(^|\/)configs?\//.test(normalized) || filePath.includes('.config.'))
+        return 'configuration';
+    return 'production';
 }
 function kindFromFilePath(filePath) {
     if (/\/(controllers?|handlers?)\//i.test(filePath))
@@ -77,6 +103,7 @@ function kindFromFilePath(filePath) {
 function extractRoutes(sourceFile, repoRoot) {
     const routes = [];
     const filePath = (0, security_1.relativePath)(repoRoot, sourceFile.getFilePath());
+    const sourceType = getSourceType(filePath);
     sourceFile.forEachDescendant((node) => {
         if (node.getKind() !== ts_morph_1.SyntaxKind.CallExpression)
             return;
@@ -109,7 +136,7 @@ function extractRoutes(sourceFile, repoRoot) {
                 handlerName = lastArg.getText();
             }
         }
-        routes.push({ method, path: routePath, filePath, handlerName, line });
+        routes.push({ method, path: routePath, filePath, sourceType, handlerName, line });
     });
     return routes;
 }
@@ -120,7 +147,8 @@ function extractRoutes(sourceFile, repoRoot) {
 function analyzeCode(repoPath, sourceFiles) {
     const symbols = [];
     const routes = [];
-    if (sourceFiles.length === 0)
+    const jsTsFiles = sourceFiles.filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(f));
+    if (jsTsFiles.length === 0)
         return { symbols, routes };
     // ts-morph project — we add files manually, no tsconfig needed
     const project = new ts_morph_1.Project({
@@ -129,7 +157,7 @@ function analyzeCode(repoPath, sourceFiles) {
         compilerOptions: { allowJs: true },
     });
     // Only analyse up to 150 source files to keep performance reasonable
-    const filesToAnalyze = sourceFiles.slice(0, 150);
+    const filesToAnalyze = jsTsFiles.slice(0, 150);
     for (const rel of filesToAnalyze) {
         const abs = path_1.default.join(repoPath, rel);
         try {
@@ -141,6 +169,7 @@ function analyzeCode(repoPath, sourceFiles) {
     }
     for (const sourceFile of project.getSourceFiles()) {
         const filePath = (0, security_1.relativePath)(repoPath, sourceFile.getFilePath());
+        const sourceType = getSourceType(filePath);
         // ── Routes ────────────────────────────────────────────────────────────────
         routes.push(...extractRoutes(sourceFile, repoPath));
         // ── Functions ─────────────────────────────────────────────────────────────
@@ -151,13 +180,14 @@ function analyzeCode(repoPath, sourceFiles) {
             const body = fn.getBodyText() ?? '';
             const isExported = fn.isExported() || fn.isDefaultExport();
             const params = fn.getParameters().length;
-            const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params);
+            const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params, sourceType);
             const start = fn.getStartLineNumber();
             const end = fn.getEndLineNumber();
             symbols.push({
                 name,
                 kind: kindFromFilePath(filePath),
                 filePath,
+                sourceType,
                 lineStart: start,
                 lineEnd: end,
                 isExported,
@@ -174,11 +204,12 @@ function analyzeCode(repoPath, sourceFiles) {
                 return;
             const isExported = cls.isExported() || cls.isDefaultExport();
             const clsBody = cls.getMembers().map((m) => m.getText()).join(' ');
-            const { importance, reasons } = scoreSymbol(name, filePath, clsBody, isExported, 0);
+            const { importance, reasons } = scoreSymbol(name, filePath, clsBody, isExported, 0, sourceType);
             symbols.push({
                 name,
                 kind: 'class',
                 filePath,
+                sourceType,
                 lineStart: cls.getStartLineNumber(),
                 lineEnd: cls.getEndLineNumber(),
                 isExported,
@@ -193,11 +224,12 @@ function analyzeCode(repoPath, sourceFiles) {
                 const mBody = method.getBodyText() ?? '';
                 const mExported = isExported; // methods inherit class export
                 const mParams = method.getParameters().length;
-                const { importance: mImp, reasons: mReasons } = scoreSymbol(`${name}.${mName}`, filePath, mBody, mExported, mParams);
+                const { importance: mImp, reasons: mReasons } = scoreSymbol(`${name}.${mName}`, filePath, mBody, mExported, mParams, sourceType);
                 symbols.push({
                     name: `${name}.${mName}`,
                     kind: 'method',
                     filePath,
+                    sourceType,
                     lineStart: method.getStartLineNumber(),
                     lineEnd: method.getEndLineNumber(),
                     isExported: mExported,
@@ -223,11 +255,12 @@ function analyzeCode(repoPath, sourceFiles) {
             const params = init.getKind() === ts_morph_1.SyntaxKind.ArrowFunction
                 ? (init.asKind(ts_morph_1.SyntaxKind.ArrowFunction)?.getParameters().length ?? 0)
                 : (init.asKind(ts_morph_1.SyntaxKind.FunctionExpression)?.getParameters().length ?? 0);
-            const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params);
+            const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params, sourceType);
             symbols.push({
                 name,
                 kind: 'arrow_function',
                 filePath,
+                sourceType,
                 lineStart: decl.getStartLineNumber(),
                 lineEnd: decl.getEndLineNumber(),
                 isExported,

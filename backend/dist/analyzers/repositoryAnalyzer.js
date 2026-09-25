@@ -8,13 +8,19 @@ const path_1 = __importDefault(require("path"));
 const fast_glob_1 = __importDefault(require("fast-glob"));
 const security_1 = require("../utils/security");
 // ─── Patterns ─────────────────────────────────────────────────────────────────
-const SOURCE_EXTENSIONS = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs'];
+const SOURCE_EXTENSIONS = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'java', 'go', 'rs', 'rb', 'php', 'cpp', 'c', 'h', 'hpp'];
 const TEST_PATTERNS = [
     '**/*.test.ts', '**/*.test.tsx', '**/*.test.js', '**/*.test.jsx',
     '**/*.spec.ts', '**/*.spec.tsx', '**/*.spec.js', '**/*.spec.jsx',
     '**/__tests__/**/*.{ts,tsx,js,jsx}',
     '**/test/**/*.{ts,tsx,js,jsx}',
     '**/tests/**/*.{ts,tsx,js,jsx}',
+    '**/*_test.py', '**/test_*.py',
+    '**/*Test.java', '**/*Tests.java',
+    '**/*_test.go',
+    '**/tests/**/*.rs',
+    '**/*_spec.rb',
+    '**/*Test.php',
 ];
 const CONFIG_FILE_NAMES = [
     'package.json', 'tsconfig.json', 'tsconfig.*.json',
@@ -26,6 +32,12 @@ const CONFIG_FILE_NAMES = [
     'vite.config.*', 'webpack.config.*', 'rollup.config.*',
     '.eslintrc*', '.prettierrc*', '.babelrc*',
     'README.md', 'README.MD', 'readme.md',
+    'requirements.txt', 'pyproject.toml', 'Pipfile',
+    'pom.xml', 'build.gradle',
+    'go.mod',
+    'Cargo.toml',
+    'Gemfile',
+    'composer.json',
 ];
 const IGNORE_DIRS = [
     '**/node_modules/**',
@@ -39,20 +51,48 @@ const IGNORE_DIRS = [
     '**/.next/**',
     '**/.nuxt/**',
     '**/.svelte-kit/**',
+    '**/venv/**',
+    '**/.venv/**',
+    '**/target/**',
+    '**/vendor/**',
 ];
-/** Detect language from the presence of .ts/.tsx files vs .js only. */
+/** Detect language from the presence of source files. */
 function detectLanguage(sourceFiles) {
-    const hasTS = sourceFiles.some((f) => f.endsWith('.ts') || f.endsWith('.tsx'));
-    const hasJS = sourceFiles.some((f) => f.endsWith('.js') || f.endsWith('.jsx') || f.endsWith('.mjs'));
-    if (hasTS && hasJS)
-        return 'mixed';
-    if (hasTS)
-        return 'typescript';
-    if (hasJS)
-        return 'javascript';
-    return 'unknown';
+    let js = 0, ts = 0, py = 0, java = 0, go = 0, rs = 0, rb = 0, php = 0, cpp = 0;
+    for (const f of sourceFiles) {
+        if (f.endsWith('.ts') || f.endsWith('.tsx'))
+            ts++;
+        else if (f.endsWith('.js') || f.endsWith('.jsx') || f.endsWith('.mjs'))
+            js++;
+        else if (f.endsWith('.py'))
+            py++;
+        else if (f.endsWith('.java'))
+            java++;
+        else if (f.endsWith('.go'))
+            go++;
+        else if (f.endsWith('.rs'))
+            rs++;
+        else if (f.endsWith('.rb'))
+            rb++;
+        else if (f.endsWith('.php'))
+            php++;
+        else if (f.endsWith('.cpp') || f.endsWith('.c'))
+            cpp++;
+    }
+    const counts = { typescript: ts, javascript: js, python: py, java, go, rust: rs, ruby: rb, php, 'c++': cpp };
+    let maxLang = 'unknown';
+    let maxCount = 0;
+    for (const [lang, count] of Object.entries(counts)) {
+        if (count > maxCount) {
+            maxCount = count;
+            maxLang = lang;
+        }
+    }
+    if (maxLang === 'typescript' && js > 0)
+        return 'mixed'; // backwards compatibility
+    return maxLang;
 }
-/** Detect package manager from lockfile presence. */
+/** Detect package manager from lockfile or config presence. */
 function detectPackageManager(repoPath) {
     if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'pnpm-lock.yaml')))
         return 'pnpm';
@@ -60,6 +100,22 @@ function detectPackageManager(repoPath) {
         return 'yarn';
     if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'package-lock.json')))
         return 'npm';
+    if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'requirements.txt')))
+        return 'pip';
+    if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'poetry.lock')) || (0, security_1.fileExists)(path_1.default.join(repoPath, 'pyproject.toml')))
+        return 'poetry';
+    if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'pom.xml')))
+        return 'maven';
+    if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'build.gradle')))
+        return 'gradle';
+    if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'Cargo.toml')))
+        return 'cargo';
+    if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'go.mod')))
+        return 'go-modules';
+    if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'Gemfile')))
+        return 'bundler';
+    if ((0, security_1.fileExists)(path_1.default.join(repoPath, 'composer.json')))
+        return 'composer';
     return 'unknown';
 }
 /** Detect test frameworks from devDependencies and config files. */
@@ -67,6 +123,7 @@ function detectTestFrameworks(devDeps, configFiles) {
     const found = new Set();
     const allKeys = Object.keys(devDeps).map((k) => k.toLowerCase());
     const configNames = configFiles.map((f) => path_1.default.basename(f).toLowerCase());
+    // JS/TS
     if (allKeys.some((k) => k === 'jest' || k.startsWith('@jest/')))
         found.add('jest');
     if (allKeys.some((k) => k === 'vitest'))
@@ -77,15 +134,25 @@ function detectTestFrameworks(devDeps, configFiles) {
         found.add('jasmine');
     if (allKeys.some((k) => k === 'ava'))
         found.add('ava');
-    // Fallback: config file names
-    if (found.size === 0) {
-        if (configNames.some((n) => n.startsWith('jest.config')))
-            found.add('jest');
-        if (configNames.some((n) => n.startsWith('vitest.config')))
-            found.add('vitest');
-        if (configNames.some((n) => n.startsWith('.mocharc')))
-            found.add('mocha');
-    }
+    // Fallback config files for all languages
+    if (configNames.some((n) => n.startsWith('jest.config')))
+        found.add('jest');
+    if (configNames.some((n) => n.startsWith('vitest.config')))
+        found.add('vitest');
+    if (configNames.some((n) => n.startsWith('.mocharc')))
+        found.add('mocha');
+    if (configNames.some((n) => n.includes('pytest')))
+        found.add('pytest');
+    if (configNames.some((n) => n.includes('pom.xml') || n.includes('build.gradle')))
+        found.add('junit'); // simple assumption for Java
+    if (configNames.some((n) => n === 'cargo.toml'))
+        found.add('cargo-test');
+    if (configNames.some((n) => n === 'go.mod'))
+        found.add('go-test');
+    if (configNames.some((n) => n === 'composer.json'))
+        found.add('phpunit');
+    if (configNames.some((n) => n === 'gemfile'))
+        found.add('rspec');
     return Array.from(found);
 }
 /** Detect the primary framework from dependencies. */
@@ -95,7 +162,7 @@ function detectFramework(deps, devDeps) {
     if (keys.includes('next'))
         return 'Next.js';
     if (keys.includes('nuxt') || keys.includes('nuxt3'))
-        return 'Nuxt';
+        return 'Nuxt.js';
     if (keys.includes('remix'))
         return 'Remix';
     if (keys.includes('@nestjs/core'))

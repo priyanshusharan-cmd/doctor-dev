@@ -10,7 +10,8 @@ const analyzeSchema = zod_1.z.object({
     repositoryPath: zod_1.z
         .string()
         .min(1, 'repositoryPath is required')
-        .max(500, 'repositoryPath is too long')
+        .max(800, 'repositoryPath is too long')
+        .transform((p) => p.trim())
         .refine((p) => !p.includes('\0'), 'repositoryPath contains invalid characters'),
     runTests: zod_1.z.boolean().optional().default(false),
     generateTests: zod_1.z.boolean().optional().default(true),

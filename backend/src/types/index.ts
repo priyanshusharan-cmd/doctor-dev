@@ -68,10 +68,22 @@ export type SymbolKind =
 
 export type SymbolImportance = 'critical' | 'high' | 'medium' | 'low';
 
+export type SourceType =
+  | 'production'
+  | 'examples'
+  | 'benchmarks'
+  | 'fixtures'
+  | 'tests'
+  | 'documentation'
+  | 'generated'
+  | 'build'
+  | 'configuration';
+
 export interface CodeSymbol {
   name: string;
   kind: SymbolKind;
   filePath: string;
+  sourceType: SourceType;
   lineStart: number;
   lineEnd: number;
   isExported: boolean;
@@ -87,6 +99,7 @@ export interface RouteInfo {
   method: string;
   path: string;
   filePath: string;
+  sourceType: SourceType;
   handlerName?: string;
   line: number;
 }
@@ -108,11 +121,17 @@ export interface TestProfile {
   suites: TestSuite[];
   coveredFiles: Set<string>;
   detectedTestScript?: string;
+  coverage: CoverageInfo;
 }
 
 // ─── Test Mapping ─────────────────────────────────────────────────────────────
 
-export type CoverageStatus = 'covered' | 'partial' | 'none';
+export type CoverageStatus =
+  | 'DIRECTLY_TESTED'
+  | 'INDIRECTLY_TESTED'
+  | 'PARTIALLY_TESTED'
+  | 'NOT_ENOUGH_EVIDENCE'
+  | 'NOT_TESTED';
 
 export interface TestMapping {
   sourceFile: string;
@@ -121,6 +140,18 @@ export interface TestMapping {
   coverageStatus: CoverageStatus;
   /** 0–1 confidence that the mapping is correct */
   confidence: number;
+  evidence: string[];
+}
+
+export type GlobalCoverageStatus =
+  | 'ACTUAL_COVERAGE'
+  | 'EVIDENCE_BASED'
+  | 'UNAVAILABLE';
+
+export interface CoverageInfo {
+  status: GlobalCoverageStatus;
+  percentage?: number;
+  reason: string;
 }
 
 // ─── Testing Gaps ─────────────────────────────────────────────────────────────

@@ -15,6 +15,7 @@ function buildTestMappings(sourceFiles, testProfile) {
     const mappings = [];
     for (const sf of sourceFiles) {
         const relatedTests = [];
+        const evidence = [];
         let confidence = 0;
         const sfBase = sf.replace(/\.(ts|tsx|js|jsx)$/, '').replace(/\\/g, '/');
         const sfName = sfBase.split('/').pop() ?? '';
@@ -23,34 +24,58 @@ function buildTestMappings(sourceFiles, testProfile) {
             // Direct name match: foo.ts ↔ foo.test.ts
             if (suiteBase.endsWith(`/${sfName}.test`) ||
                 suiteBase.endsWith(`/${sfName}.spec`) ||
-                suiteBase.endsWith(`/${sfName}`)) {
+                suiteBase.endsWith(`/${sfName}`) ||
+                suiteBase.endsWith(`_test`)) {
                 relatedTests.push(suite.filePath);
+                evidence.push(`Direct file name match with ${suite.filePath}`);
                 confidence = Math.max(confidence, 0.95);
                 continue;
             }
             // Import-based coverage
             if (suite.importsUnder.includes(sf)) {
                 relatedTests.push(suite.filePath);
-                confidence = Math.max(confidence, 0.8);
+                evidence.push(`Imported directly by ${suite.filePath}`);
+                confidence = Math.max(confidence, 0.9);
                 continue;
             }
             // Path segment match: auth/user → user.test
             const sfSegments = sfBase.split('/');
             const suiteSegments = suiteBase.split('/');
             const overlap = sfSegments.filter((s) => suiteSegments.includes(s)).length;
-            if (overlap >= 2 && sfName.length > 3) {
+            if (overlap >= 2 && sfName.length > 3 && suite.filePath.toLowerCase().includes(sfName.toLowerCase())) {
                 relatedTests.push(suite.filePath);
-                confidence = Math.max(confidence, 0.4);
+                evidence.push(`Heuristic path and name match with ${suite.filePath}`);
+                confidence = Math.max(confidence, 0.6);
             }
         }
         // De-duplicate
         const unique = [...new Set(relatedTests)];
-        const status = unique.length === 0 ? 'none' : confidence >= 0.7 ? 'covered' : 'partial';
+        let status = 'NOT_TESTED';
+        if (unique.length > 0) {
+            if (confidence >= 0.9)
+                status = 'DIRECTLY_TESTED';
+            else if (confidence >= 0.7)
+                status = 'INDIRECTLY_TESTED';
+            else
+                status = 'PARTIALLY_TESTED';
+        }
+        else if (testProfile.totalTestFiles > 0) {
+            // If there are tests in the repo, but we just can't map them
+            status = 'NOT_ENOUGH_EVIDENCE';
+            evidence.push('Tests exist in repository but no direct mapping found.');
+        }
+        // Actual coverage overrides
+        if (testProfile.coverage.status === 'ACTUAL_COVERAGE' && unique.length === 0) {
+            status = 'NOT_ENOUGH_EVIDENCE';
+            confidence = 0.5;
+            evidence.push('Relying on actual coverage report rather than heuristics.');
+        }
         mappings.push({
             sourceFile: sf,
             relatedTests: unique,
             coverageStatus: status,
             confidence: unique.length > 0 ? confidence : 0,
+            evidence,
         });
     }
     return mappings;
@@ -116,10 +141,12 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
         mappingByFile.set(m.sourceFile, m);
     // ── 1. Symbol-level gaps ──────────────────────────────────────────────────
     // Only check medium-importance and above to avoid noise
-    const importantSymbols = symbols.filter((s) => s.importance === 'critical' || s.importance === 'high' || s.importance === 'medium');
+    const importantSymbols = symbols.filter((s) => (s.importance === 'critical' || s.importance === 'high' || s.importance === 'medium')
+        && s.sourceType === 'production');
     for (const sym of importantSymbols) {
         const mapping = mappingByFile.get(sym.filePath);
-        const hasTests = mapping && mapping.relatedTests.length > 0;
+        const hasTests = mapping && mapping.coverageStatus === 'DIRECTLY_TESTED' || mapping?.coverageStatus === 'INDIRECTLY_TESTED';
+        const isUnknown = mapping?.coverageStatus === 'NOT_ENOUGH_EVIDENCE';
         const content = sourceContents.get(sym.filePath) ?? '';
         // Determine gap category
         let category = null;
@@ -129,9 +156,17 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
         if (!hasTests) {
             category = 'no_test';
             severity = sym.importance === 'critical' ? 'critical' : sym.importance === 'high' ? 'high' : 'medium';
-            reason = `${sym.name} has importance "${sym.importance}" (${sym.importanceReasons.join(', ')}) but no test file appears to cover ${sym.filePath}`;
+            if (isUnknown) {
+                severity = 'low'; // Downgrade severity if we just can't map it properly
+                reason = `Testing evidence insufficient for ${sym.name} (tests exist but could not confidently link to this file).`;
+            }
+            else {
+                reason = `${sym.name} has importance "${sym.importance}" (${sym.importanceReasons.join(', ')}) but no test file appears to cover ${sym.filePath}`;
+            }
             evidence.push(`Symbol: ${sym.name} (${sym.kind}) at ${sym.filePath}:${sym.lineStart}`);
             evidence.push(`Importance signals: ${sym.importanceReasons.join(', ')}`);
+            if (mapping)
+                evidence.push(...mapping.evidence);
         }
         else if (hasTests && ERROR_HANDLING_RE.test(content)) {
             // Has tests but likely missing error coverage
@@ -184,11 +219,16 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
     }
     // ── 2. Route-level gaps (API routes with no test) ─────────────────────────
     for (const route of routes) {
+        if (route.sourceType !== 'production')
+            continue;
         const mapping = mappingByFile.get(route.filePath);
-        if (mapping && mapping.relatedTests.length > 0) {
+        const isUnknown = mapping?.coverageStatus === 'NOT_ENOUGH_EVIDENCE';
+        const hasTests = mapping && mapping.coverageStatus === 'DIRECTLY_TESTED' || mapping?.coverageStatus === 'INDIRECTLY_TESTED';
+        let covered = false;
+        if (hasTests) {
             // Check if any test mentions this route path
             const routePath = route.path.toLowerCase().replace(/[/:]/g, ' ');
-            const covered = testProfile.suites.some((s) => mapping.relatedTests.includes(s.filePath) &&
+            covered = testProfile.suites.some((s) => mapping.relatedTests.includes(s.filePath) &&
                 [...s.itBlocks, ...s.describeBlocks].some((b) => {
                     const norm = b.toLowerCase();
                     return norm.includes(route.method.toLowerCase()) ||
@@ -196,6 +236,10 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
                 }));
             if (covered)
                 continue;
+        }
+        // If it's an unknown framework/coverage state, we shouldn't penalize harshly
+        if (isUnknown) {
+            continue; // Skip creating a false positive route gap if we just don't understand the testing setup well enough
         }
         // Route has no test coverage
         const isAuthRoute = AUTH_RE.test(route.path + (route.handlerName ?? ''));
