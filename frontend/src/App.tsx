@@ -20,6 +20,7 @@ export default function App() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [isStarting, setIsStarting] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -61,6 +62,7 @@ export default function App() {
     setResult(null);
     setActiveTab('overview');
     setStatus('pending');
+    setIsStarting(true);
 
     try {
       const res = await api.startAnalysis(repositoryPath, opts);
@@ -70,6 +72,8 @@ export default function App() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to start analysis');
       setStatus('error');
+    } finally {
+      setIsStarting(false);
     }
   }
 
@@ -114,8 +118,8 @@ export default function App() {
   const hasResult = result !== null;
 
   function renderContent() {
-    if (isRunning) {
-      return <AnalysisProgress status={status} statusLabel={statusLabel} />;
+    if (isRunning || isStarting) {
+      return <AnalysisProgress status={status} statusLabel={statusLabel || 'Connecting to server...'} />;
     }
     if (!hasResult) return <EmptyDashboard />;
 
@@ -151,7 +155,7 @@ export default function App() {
         <RepoSelector
           onAnalyze={handleAnalyze}
           onDemo={handleDemo}
-          isLoading={isRunning}
+          isLoading={isRunning || isStarting}
           error={error}
         />
         <div>{renderContent()}</div>
