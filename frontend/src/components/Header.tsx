@@ -63,32 +63,30 @@ export default function Header({ activeTab, onTabChange, hasResult, onHistoryCli
         </div>
 
         {/* Nav tabs */}
-        <nav className="flex gap-0.5 -mb-px overflow-x-auto scrollbar-hide">
-          {TABS.map((tab) => {
-            const isActive = tab.id === activeTab;
-            const isDisabled = !hasResult && tab.id !== 'overview';
-            return (
-              <button
-                key={tab.id}
-                id={`tab-${tab.id}`}
-                onClick={() => !isDisabled && onTabChange(tab.id)}
-                disabled={isDisabled}
-                className={[
-                  'flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap',
-                  isActive
-                    ? 'border-blue-500 text-blue-400 tab-active'
-                    : isDisabled
-                    ? 'border-transparent text-gray-700 cursor-not-allowed'
-                    : 'border-transparent text-gray-500 hover:text-gray-200 hover:border-gray-600 cursor-pointer',
-                ].join(' ')}
-              >
-                {tab.id === 'testing' && <Microscope className="w-3.5 h-3.5" />}
-                {tab.id === 'configuration' && <Settings2 className="w-3.5 h-3.5" />}
-                {tab.label}
-              </button>
-            );
-          })}
-        </nav>
+        {hasResult && (
+          <nav className="flex gap-0.5 -mb-px overflow-x-auto scrollbar-hide animate-in fade-in slide-in-from-top-1 duration-300">
+            {TABS.map((tab) => {
+              const isActive = tab.id === activeTab;
+              return (
+                <button
+                  key={tab.id}
+                  id={`tab-${tab.id}`}
+                  onClick={() => onTabChange(tab.id)}
+                  className={[
+                    'flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all duration-200 whitespace-nowrap',
+                    isActive
+                      ? 'border-blue-500 text-blue-400 tab-active'
+                      : 'border-transparent text-gray-500 hover:text-gray-200 hover:border-gray-600 cursor-pointer',
+                  ].join(' ')}
+                >
+                  {tab.id === 'testing' && <Microscope className="w-3.5 h-3.5" />}
+                  {tab.id === 'configuration' && <Settings2 className="w-3.5 h-3.5" />}
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        )}
       </div>
     </header>
   );
