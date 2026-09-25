@@ -37,6 +37,7 @@ export default function App() {
         if (data.status === 'complete' && data.result) {
           stopPolling();
           setResult(data.result);
+          setActiveTab('overview');
         } else if (data.status === 'error') {
           stopPolling();
         }
@@ -75,7 +76,6 @@ export default function App() {
   }
 
   const isRunning = status !== 'pending' && status !== 'complete' && status !== 'error' && analysisId !== null;
-  const isIdle = !analysisId && status === 'pending';
   const hasResult = result !== null;
 
   function renderContent() {
@@ -99,7 +99,7 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex flex-col">
+    <div className="min-h-screen flex flex-col">
       <Header activeTab={activeTab} onTabChange={setActiveTab} hasResult={hasResult} />
       <main className="flex-1 max-w-screen-xl mx-auto w-full px-6 py-6 space-y-5">
         <RepoSelector
@@ -110,6 +110,15 @@ export default function App() {
         />
         <div>{renderContent()}</div>
       </main>
+      <footer className="border-t border-gray-800/40 py-4 mt-8">
+        <div className="max-w-screen-xl mx-auto px-6 flex items-center justify-between text-xs text-gray-700">
+          <span>Doctor Dev · AI Software Health Checker · IBM Bob 2.0 Hackathon 2026</span>
+          <a href="https://github.com/priyanshusharan-cmd/doctor-dev" target="_blank" rel="noopener noreferrer"
+            className="hover:text-gray-400 transition-colors">
+            GitHub
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }
