@@ -31,11 +31,11 @@ export default function Header({ activeTab, onTabChange, hasResult, onHistoryCli
                 <Activity className="w-4 h-4 text-white" strokeWidth={2.5} />
               </div>
             </div>
-            <div className="flex items-baseline gap-2.5">
+            <div className="flex items-center gap-2.5">
               <span className="text-white font-bold text-base tracking-tight">
                 Doctor<span className="text-gradient-blue">Dev</span>
               </span>
-              <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 font-medium">
+              <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 font-medium mt-0.5">
                 <span className="w-1 h-1 rounded-full bg-gray-700" />
                 AI Software Health Checker
               </span>
@@ -56,9 +56,6 @@ export default function Header({ activeTab, onTabChange, hasResult, onHistoryCli
               <Clock className="w-3.5 h-3.5" />
               History
             </button>
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-800 bg-gray-900/50">
-              <span className="text-xs text-gray-600 font-mono">v0.2.0</span>
-            </div>
           </div>
         </div>
 
