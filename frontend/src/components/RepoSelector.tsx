@@ -15,7 +15,7 @@ function detectInputType(value: string): 'github' | 'local' | 'empty' {
   if (
     /^https?:\/\/github\.com\//i.test(v) ||
     /^git@github\.com:/i.test(v) ||
-    /^[\w.\-]+\/[\w.\-]+$/.test(v)
+    /^[a-zA-Z0-9\-]+\/[\w.\-]+$/.test(v)
   ) return 'github';
   return 'local';
 }

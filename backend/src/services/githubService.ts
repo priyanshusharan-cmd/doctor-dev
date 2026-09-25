@@ -6,7 +6,7 @@ import os from 'os';
 /** Matches GitHub HTTPS and SSH URLs, plus short `user/repo` forms. */
 const GITHUB_HTTPS_RE = /^https?:\/\/github\.com\/[\w.\-]+\/[\w.\-]+(\.git)?$/i;
 const GITHUB_SSH_RE   = /^git@github\.com:[\w.\-]+\/[\w.\-]+(\.git)?$/i;
-const GITHUB_SHORT_RE = /^[\w.\-]+\/[\w.\-]+$/;
+const GITHUB_SHORT_RE = /^[a-zA-Z0-9\-]+\/[\w.\-]+$/;
 
 /**
  * Returns true if the input looks like a GitHub repository reference.
