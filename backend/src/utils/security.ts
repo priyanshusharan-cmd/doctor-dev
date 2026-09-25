@@ -76,7 +76,13 @@ export function resolveRepoPath(inputPath: string): string {
 
 /** Return the directory name as the project name. */
 export function repoName(repoPath: string): string {
-  return path.basename(repoPath);
+  const base = path.basename(repoPath);
+  // Match doctor-dev-{userName}-{repoName}-{randomString}
+  const match = base.match(/^doctor-dev-(.+)-(.+)-[a-zA-Z0-9]+$/);
+  if (match) {
+    return `${match[1]}/${match[2]}`;
+  }
+  return base;
 }
 
 /**

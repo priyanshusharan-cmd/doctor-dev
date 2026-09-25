@@ -36,6 +36,7 @@ export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoad
   const menuRef = useRef<HTMLDivElement>(null);
 
   const inputType = detectInputType(repoPath);
+  const isGitHub = inputType === 'github';
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -57,8 +58,6 @@ export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoad
     setRepoPath(value);
     setShowExamples(false);
   }
-
-  const isGitHub = inputType === 'github';
 
   return (
     <div className="rounded-xl border border-gray-800/80 bg-[#0c1017] shadow-2xl overflow-hidden relative">
