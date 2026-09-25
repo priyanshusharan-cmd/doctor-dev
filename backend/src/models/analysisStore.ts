@@ -25,9 +25,12 @@ export function listAnalyses(): Analysis[] {
   );
 }
 
-export function setStatus(id: string, status: AnalysisStatus): void {
+export function setStatus(id: string, status: AnalysisStatus, label?: string): void {
   const a = store.get(id);
-  if (a) a.status = status;
+  if (a) {
+    a.status = status;
+    if (label !== undefined) a.statusLabel = label;
+  }
 }
 
 export function setResult(id: string, result: AnalysisResult): void {
