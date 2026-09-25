@@ -50,8 +50,8 @@ export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoad
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!repoPath.trim()) return;
-    onAnalyze(repoPath.trim(), { runTests, generateTests });
-  }, [repoPath, runTests, generateTests, onAnalyze]);
+    onAnalyze(repoPath.trim(), { runTests: isGitHub ? false : runTests, generateTests });
+  }, [repoPath, runTests, generateTests, onAnalyze, isGitHub]);
 
   function useExample(value: string) {
     setRepoPath(value);
@@ -202,22 +202,24 @@ export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoad
               </div>
 
               {/* Toggle 2 */}
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={runTests}
-                  onClick={() => setRunTests(!runTests)}
-                  disabled={isLoading}
-                  className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900 disabled:opacity-50 ${runTests ? 'bg-blue-600' : 'bg-gray-700'}`}
-                >
-                  <span className="sr-only">Run existing tests</span>
-                  <span className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${runTests ? 'translate-x-2' : '-translate-x-2'}`} />
-                </button>
-                <button type="button" onClick={() => setRunTests(!runTests)} className="text-xs font-medium text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={isLoading}>
-                  Run tests {runTests && isGitHub && <span className="text-gray-500 font-normal ml-1">(local only)</span>}
-                </button>
-              </div>
+              {!isGitHub && (
+                <div className="flex items-center gap-3 animate-in fade-in zoom-in-95 duration-200">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={runTests}
+                    onClick={() => setRunTests(!runTests)}
+                    disabled={isLoading}
+                    className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors duration-200 ease-in-out focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900 disabled:opacity-50 ${runTests ? 'bg-blue-600' : 'bg-gray-700'}`}
+                  >
+                    <span className="sr-only">Run existing tests</span>
+                    <span className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${runTests ? 'translate-x-2' : '-translate-x-2'}`} />
+                  </button>
+                  <button type="button" onClick={() => setRunTests(!runTests)} className="text-xs font-medium text-gray-300 hover:text-white transition-colors disabled:opacity-50" disabled={isLoading}>
+                    Run tests
+                  </button>
+                </div>
+              )}
             </div>
             
             <div className="text-xs text-gray-500 flex items-center gap-1.5 font-medium border border-gray-800/60 bg-gray-900/30 px-2.5 py-1 rounded-md">
