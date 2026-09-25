@@ -155,6 +155,7 @@ export default function App() {
         <RepoSelector
           onAnalyze={handleAnalyze}
           onDemo={handleDemo}
+          onHistoryClick={() => setHistoryOpen(true)}
           isLoading={isRunning || isStarting}
           error={error}
         />

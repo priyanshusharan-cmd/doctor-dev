@@ -52,13 +52,6 @@ export default function Header({ activeTab, onTabChange, hasResult, onHistoryCli
                 Analysis ready
               </div>
             )}
-            <button
-              onClick={onHistoryClick}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-800 bg-gray-900/50 hover:bg-gray-800 transition-colors text-xs text-gray-400 hover:text-gray-200 font-medium"
-            >
-              <Clock className="w-3.5 h-3.5" />
-              History
-            </button>
           </div>
         </div>
 

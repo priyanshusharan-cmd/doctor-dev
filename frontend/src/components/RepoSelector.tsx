@@ -1,9 +1,10 @@
-import { FolderOpen, Play, FlaskConical, Loader2, AlertCircle, ChevronRight, Sparkles, Github, HardDrive } from 'lucide-react';
-import { useState, useCallback } from 'react';
+import { FolderOpen, Play, FlaskConical, Loader2, AlertCircle, Sparkles, Github, HardDrive, Clock, List } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 interface Props {
   onAnalyze: (repoPath: string, opts: { runTests: boolean; generateTests: boolean }) => void;
   onDemo: () => void;
+  onHistoryClick: () => void;
   isLoading: boolean;
   error: string | null;
 }
@@ -26,13 +27,25 @@ const EXAMPLES = [
   { label: 'Local path', value: '/Users/you/your-project' },
 ];
 
-export default function RepoSelector({ onAnalyze, onDemo, isLoading, error }: Props) {
+export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoading, error }: Props) {
   const [repoPath, setRepoPath] = useState('');
   const [runTests, setRunTests] = useState(false);
   const [generateTests, setGenerateTests] = useState(true);
   const [showExamples, setShowExamples] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   const inputType = detectInputType(repoPath);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    if (menuOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
 
   const handleSubmit = useCallback((e: React.FormEvent) => {
     e.preventDefault();
@@ -63,26 +76,46 @@ export default function RepoSelector({ onAnalyze, onDemo, isLoading, error }: Pr
             <p className="text-xs text-gray-500 mt-0.5">Enter a GitHub URL or local directory path</p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        
+        <div className="relative" ref={menuRef}>
           <button
             type="button"
-            onClick={() => setShowExamples(!showExamples)}
-            className="text-xs font-medium text-gray-400 hover:text-gray-200 transition-colors"
+            onClick={() => setMenuOpen(!menuOpen)}
+            className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-700 bg-gray-800/50 hover:bg-gray-700 hover:text-white text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
-            Examples
+            <FlaskConical className="w-4 h-4" />
           </button>
-          <div className="w-[1px] h-4 bg-gray-800"></div>
-          <button
-            id="demo-btn"
-            type="button"
-            onClick={onDemo}
-            disabled={isLoading}
-            className="flex items-center gap-1.5 text-xs font-medium text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-40 group"
-          >
-            <FlaskConical className="w-3.5 h-3.5" />
-            Try Demo
-            <ChevronRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-          </button>
+          
+          {menuOpen && (
+            <div className="absolute right-0 mt-2 w-48 rounded-xl border border-gray-700 bg-gray-800 shadow-2xl z-50 py-1 animate-in fade-in slide-in-from-top-1 duration-150">
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); onHistoryClick(); }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <Clock className="w-4 h-4 text-gray-400" />
+                History
+              </button>
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); setShowExamples(!showExamples); }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-300 hover:bg-gray-700 hover:text-white transition-colors flex items-center gap-2"
+              >
+                <List className="w-4 h-4 text-gray-400" />
+                Examples
+              </button>
+              <div className="h-px bg-gray-700 my-1 mx-2"></div>
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); onDemo(); }}
+                disabled={isLoading}
+                className="w-full text-left px-4 py-2 text-sm text-purple-300 hover:bg-gray-700 hover:text-purple-200 transition-colors flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <FlaskConical className="w-4 h-4" />
+                Try Demo
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
