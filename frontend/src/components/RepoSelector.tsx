@@ -153,9 +153,9 @@ export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoad
                 type="text"
                 value={repoPath}
                 onChange={(e) => setRepoPath(e.target.value)}
-                placeholder="https://github.com/user/repo or /Users/path/to/local"
+                placeholder="Paste a GitHub repository URL or local project path..."
                 disabled={isLoading}
-                className="w-full bg-transparent border-none focus:outline-none text-sm text-gray-100 py-4 placeholder:text-gray-600 disabled:opacity-50 font-mono"
+                className="w-full bg-transparent border-none focus:outline-none text-sm text-gray-100 py-4 placeholder:text-gray-500 disabled:opacity-50"
               />
               <div className="pr-2 py-2">
                 <button
