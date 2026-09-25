@@ -285,64 +285,68 @@ export async function analyzeCi(
     f.includes('.github/workflows') || f.endsWith('.gitlab-ci.yml') || f.includes('.circleci/')
   );
 
+  let anyWorkflowRunsTests = false;
+  const testScriptNames = Object.keys(profile.scripts).filter((k) => k === 'test' || k.startsWith('test'));
+
   for (const ciFile of ciFiles) {
     const content = readFileSafe(path.join(repoPath, ciFile));
     if (!content) continue;
 
-    // Node version specified in CI?
-    const nodeVersionMatch = content.match(/node-version[:\s]+['"]?(\d+)/i);
-    if (!nodeVersionMatch) {
-      if (profile.nodeVersion) {
+    const ciNonCommentContent = content.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
+    const hasTestInCi = /npm (run )?test|yarn test|pnpm test|vitest|jest|mocha/.test(ciNonCommentContent);
+    const hasInstall = /npm (ci|install)|yarn install|pnpm install/.test(ciNonCommentContent);
+
+    if (hasTestInCi) {
+      anyWorkflowRunsTests = true;
+
+      if (!hasInstall) {
         issues.push(issue(
-          'low', 0.7, 'ci',
-          `CI workflow does not pin a Node.js version`,
-          `\`${ciFile}\` does not specify a Node.js version. Without pinning, CI may behave differently from local development.`,
-          `Add \`node-version: '${profile.nodeVersion}'\` to your workflow's setup-node step.`,
-          { filePath: ciFile },
+          'high', 0.9, 'ci',
+          `CI workflow may not install dependencies`,
+          `\`${ciFile}\` runs tests but does not appear to run a dependency install command first.`,
+          `Add \`run: npm ci\` (or equivalent) to your CI workflow before the test step.`,
+          { filePath: ciFile, evidence: ['No npm/yarn/pnpm install found in workflow running tests'] },
         ));
       }
-    } else if (profile.nodeVersion) {
-      // Check for version mismatch: e.g. CI uses Node 16 but engines requires >=18
-      const ciNode = parseInt(nodeVersionMatch[1], 10);
-      const requiredMatch = profile.nodeVersion.match(/(\d+)/);
-      if (requiredMatch) {
-        const requiredNode = parseInt(requiredMatch[1], 10);
-        if (ciNode < requiredNode) {
+
+      const nodeVersionMatch = content.match(/node-version[:\s]+['"]?(\d+)/i);
+      if (!nodeVersionMatch) {
+        if (profile.nodeVersion) {
           issues.push(issue(
-            'high', 0.9, 'ci',
-            `CI uses Node.js ${ciNode} but project requires Node.js ${requiredNode}+`,
-            `\`${ciFile}\` uses \`node-version: '${ciNode}'\` but \`package.json\` engines field requires Node.js ${profile.nodeVersion}.`,
-            `Update the CI workflow to use \`node-version: '${requiredNode}'\` (or higher).`,
-            { filePath: ciFile, evidence: [`CI node-version: ${ciNode}, engines: ${profile.nodeVersion}`] },
+            'low', 0.7, 'ci',
+            `CI workflow does not pin a Node.js version`,
+            `\`${ciFile}\` runs tests but does not specify a Node.js version. Without pinning, CI may behave differently from local development.`,
+            `Add \`node-version: '${profile.nodeVersion}'\` to your workflow's setup-node step.`,
+            { filePath: ciFile },
           ));
+        }
+      } else if (profile.nodeVersion) {
+        const ciNode = parseInt(nodeVersionMatch[1], 10);
+        const requiredMatch = profile.nodeVersion.match(/(\d+)/);
+        if (requiredMatch) {
+          const requiredNode = parseInt(requiredMatch[1], 10);
+          if (ciNode < requiredNode) {
+            issues.push(issue(
+              'high', 0.9, 'ci',
+              `CI uses Node.js ${ciNode} but project requires Node.js ${requiredNode}+`,
+              `\`${ciFile}\` uses \`node-version: '${ciNode}'\` but \`package.json\` engines field requires Node.js ${profile.nodeVersion}.`,
+              `Update the CI workflow to use \`node-version: '${requiredNode}'\` (or higher).`,
+              { filePath: ciFile, evidence: [`CI node-version: ${ciNode}, engines: ${profile.nodeVersion}`] },
+            ));
+          }
         }
       }
     }
+  }
 
-    // Does CI install dependencies?
-    if (!/npm (ci|install)|yarn install|pnpm install/.test(content)) {
-      issues.push(issue(
-        'high', 0.9, 'ci',
-        `CI workflow may not install dependencies`,
-        `\`${ciFile}\` does not appear to run a dependency install command.`,
-        `Add \`run: npm ci\` (or equivalent) to your CI workflow.`,
-        { filePath: ciFile, evidence: ['No npm/yarn/pnpm install found in workflow'] },
-      ));
-    }
-
-    // Does CI run tests? Strip comments before checking so commented-out steps don't count
-    const ciNonCommentContent = content.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
-    const testScriptNames = Object.keys(profile.scripts).filter((k) => k === 'test' || k.startsWith('test'));
-    const hasTestInCi = /npm (run )?test|yarn test|pnpm test|vitest|jest|mocha/.test(ciNonCommentContent);
-    if (!hasTestInCi && testScriptNames.length > 0) {
-      issues.push(issue(
-        'high', 0.85, 'ci',
-        `CI workflow does not run tests`,
-        `\`${ciFile}\` does not appear to run the test suite, but the project has a test script defined.`,
-        `Add a step that runs \`npm test\` (or equivalent) in your CI workflow.`,
-        { filePath: ciFile, evidence: [`Test script exists: ${testScriptNames.join(', ')}`] },
-      ));
-    }
+  if (!anyWorkflowRunsTests && testScriptNames.length > 0 && ciFiles.length > 0) {
+    issues.push(issue(
+      'high', 0.85, 'ci',
+      `Tests are not run in CI`,
+      `The project has a test script defined, but none of the CI workflows run it.`,
+      `Add a step that runs \`npm test\` (or equivalent) in your main CI workflow.`,
+      { evidence: [`Test script exists: ${testScriptNames.join(', ')}`] },
+    ));
   }
 
   return { issues, ciFiles };
