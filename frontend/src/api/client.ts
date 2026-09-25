@@ -20,6 +20,7 @@ export interface AnalysisPollResponse {
   status: string;
   statusLabel: string;
   repositoryPath: string;
+  createdAt: string;
   error?: string;
   result?: import('../types').AnalysisResult;
 }

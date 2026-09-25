@@ -8,6 +8,7 @@ import TestingPage from './pages/TestingPage';
 import ConfigurationPage from './pages/ConfigurationPage';
 import ValidationPage from './pages/ValidationPage';
 import ReportPage from './pages/ReportPage';
+import HistoryDrawer from './components/HistoryDrawer';
 import { api } from './api/client';
 import type { ActiveTab, AnalysisStatus, AnalysisResult } from './types';
 
@@ -18,6 +19,7 @@ export default function App() {
   const [statusLabel, setStatusLabel] = useState<string>('');
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -75,6 +77,29 @@ export default function App() {
     await handleAnalyze('./demo-repository', { runTests: false, generateTests: true });
   }
 
+  async function handleLoadAnalysis(id: string) {
+    stopPolling();
+    setError(null);
+    setStatus('pending');
+    try {
+      const data = await api.getAnalysis(id);
+      setAnalysisId(data.id);
+      setStatus(data.status as AnalysisStatus);
+      setStatusLabel(data.statusLabel);
+      if (data.error) setError(data.error);
+      
+      if (data.status === 'complete' && data.result) {
+        setResult(data.result);
+        setActiveTab('overview');
+      } else if (data.status === 'pending' || data.status === 'scanning' || data.status === 'analyzing_code' || data.status === 'analyzing_tests' || data.status === 'analyzing_config' || data.status === 'prioritizing') {
+        startPolling(data.id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load analysis');
+      setStatus('error');
+    }
+  }
+
   const isRunning = status !== 'pending' && status !== 'complete' && status !== 'error' && analysisId !== null;
   const hasResult = result !== null;
 
@@ -100,7 +125,17 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Header activeTab={activeTab} onTabChange={setActiveTab} hasResult={hasResult} />
+      <Header 
+        activeTab={activeTab} 
+        onTabChange={setActiveTab} 
+        hasResult={hasResult} 
+        onHistoryClick={() => setHistoryOpen(true)}
+      />
+      <HistoryDrawer 
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        onSelect={handleLoadAnalysis}
+      />
       <main className="flex-1 max-w-screen-xl mx-auto w-full px-6 py-6 space-y-5">
         <RepoSelector
           onAnalyze={handleAnalyze}

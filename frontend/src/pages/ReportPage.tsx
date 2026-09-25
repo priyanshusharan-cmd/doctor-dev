@@ -141,6 +141,9 @@ export default function ReportPage({ result }: Props) {
             <button id="download-json" onClick={downloadJson} className="btn-secondary text-xs">
               <Download className="w-3.5 h-3.5" /> JSON
             </button>
+            <button onClick={() => window.print()} className="btn-primary text-xs">
+              <Download className="w-3.5 h-3.5" /> Save PDF
+            </button>
           </div>
         </div>
       </div>

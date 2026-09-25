@@ -1,4 +1,4 @@
-import { Activity, Microscope, Settings2 } from 'lucide-react';
+import { Activity, Microscope, Settings2, Clock } from 'lucide-react';
 import type { ActiveTab } from '../types';
 
 const TABS: { id: ActiveTab; label: string; icon?: React.ReactNode }[] = [
@@ -13,9 +13,10 @@ interface Props {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   hasResult: boolean;
+  onHistoryClick: () => void;
 }
 
-export default function Header({ activeTab, onTabChange, hasResult }: Props) {
+export default function Header({ activeTab, onTabChange, hasResult, onHistoryClick }: Props) {
   return (
     <header className="border-b border-gray-800/60 sticky top-0 z-40" style={{ background: 'rgba(8, 11, 18, 0.9)', backdropFilter: 'blur(20px)' }}>
       <div className="max-w-screen-xl mx-auto px-6">
@@ -48,7 +49,14 @@ export default function Header({ activeTab, onTabChange, hasResult }: Props) {
                 Analysis ready
               </div>
             )}
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-800 bg-gray-900/50">
+            <button
+              onClick={onHistoryClick}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-800 bg-gray-900/50 hover:bg-gray-800 transition-colors text-xs text-gray-400 hover:text-gray-200 font-medium"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              History
+            </button>
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-800 bg-gray-900/50">
               <span className="text-xs text-gray-600 font-mono">v0.2.0</span>
             </div>
           </div>
