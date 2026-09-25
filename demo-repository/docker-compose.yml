@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  api:
+    build: .
+    # DELIBERATE GAP: docker-compose maps 8080:3000 but Dockerfile exposes 8080
+    ports:
+      - "8080:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # DELIBERATE GAP: JWT_SECRET not defined here (missing env var in compose)
+      DATABASE_URL: postgresql://postgres:postgres@db:5432/rideshare
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: rideshare
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"

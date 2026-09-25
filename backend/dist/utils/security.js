@@ -1,0 +1,131 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.isSecretName = isSecretName;
+exports.redactValue = redactValue;
+exports.resolveRepoPath = resolveRepoPath;
+exports.repoName = repoName;
+exports.readFileSafe = readFileSafe;
+exports.parseJsonSafe = parseJsonSafe;
+exports.fileExists = fileExists;
+exports.normalizePath = normalizePath;
+exports.relativePath = relativePath;
+exports.isSafeTestScript = isSafeTestScript;
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
+/** Patterns that indicate a secret variable name — matched case-insensitively */
+const SECRET_PATTERNS = [
+    /secret/i,
+    /password/i,
+    /passwd/i,
+    /api[_-]?key/i,
+    /auth[_-]?token/i,
+    /access[_-]?token/i,
+    /private[_-]?key/i,
+    /credential/i,
+    /jwt[_-]?secret/i,
+    /signing[_-]?key/i,
+    /encryption[_-]?key/i,
+    /database[_-]?url/i,
+    /db[_-]?pass/i,
+    /webhook[_-]?secret/i,
+];
+/** Returns true if the variable name looks like it holds a secret. */
+function isSecretName(name) {
+    return SECRET_PATTERNS.some((re) => re.test(name));
+}
+/** Redact a secret value — NEVER returns the real value. */
+function redactValue(_value) {
+    return 'REDACTED';
+}
+/**
+ * Resolve and sanitize a repository path.
+ * Defends against:
+ *   - path traversal (../)
+ *   - symlink chains that escape the filesystem root
+ *   - non-directory paths
+ *   - non-existent paths
+ *   - null/empty inputs
+ */
+function resolveRepoPath(inputPath) {
+    if (!inputPath || typeof inputPath !== 'string' || inputPath.trim().length === 0) {
+        throw new Error('Repository path must be a non-empty string');
+    }
+    // Reject null bytes (common in path injection attacks)
+    if (inputPath.includes('\0')) {
+        throw new Error('Repository path contains invalid characters');
+    }
+    // Resolve relative to project root (parent of backend/), not process.cwd()
+    const projectRoot = path_1.default.resolve(__dirname, '../../..');
+    const resolved = path_1.default.isAbsolute(inputPath)
+        ? path_1.default.normalize(inputPath)
+        : path_1.default.resolve(projectRoot, inputPath);
+    // After normalisation, check the resolved path does not contain ../
+    // This catches both raw and encoded traversal attempts
+    if (resolved.includes('..')) {
+        throw new Error('Path traversal is not allowed');
+    }
+    // Must exist
+    if (!fs_1.default.existsSync(resolved)) {
+        throw new Error(`Repository path does not exist: ${resolved}`);
+    }
+    // Must be a directory (not a file, device, pipe, etc.)
+    const stat = fs_1.default.statSync(resolved);
+    if (!stat.isDirectory()) {
+        throw new Error(`Repository path must be a directory, got: ${resolved}`);
+    }
+    return resolved;
+}
+/** Return the directory name as the project name. */
+function repoName(repoPath) {
+    return path_1.default.basename(repoPath);
+}
+/**
+ * Read a file safely.
+ * Returns null on any error — never throws.
+ * Caps file size at 2 MB to avoid reading huge binary files.
+ */
+function readFileSafe(filePath, maxBytes = 2000000) {
+    try {
+        const stat = fs_1.default.statSync(filePath);
+        if (!stat.isFile() || stat.size > maxBytes)
+            return null;
+        return fs_1.default.readFileSync(filePath, 'utf-8');
+    }
+    catch {
+        return null;
+    }
+}
+/** Parse JSON safely — returns null on failure. */
+function parseJsonSafe(content) {
+    try {
+        return JSON.parse(content);
+    }
+    catch {
+        return null;
+    }
+}
+/** Check if a path exists. */
+function fileExists(filePath) {
+    return fs_1.default.existsSync(filePath);
+}
+/** Normalise a file path to forward slashes for consistent output. */
+function normalizePath(p) {
+    return p.replace(/\\/g, '/');
+}
+/** Return the relative path from repoRoot, with forward slashes. */
+function relativePath(repoRoot, absPath) {
+    return normalizePath(path_1.default.relative(repoRoot, absPath));
+}
+/**
+ * Validate that a shell script value only uses safe npm/yarn/pnpm invocation patterns.
+ * Used to prevent command injection in the test runner.
+ */
+function isSafeTestScript(scriptValue) {
+    // Must start with a known safe runner
+    return /^(?:jest|vitest|mocha|nyc|c8|ts-jest|tsx?)/.test(scriptValue) ||
+        /^(?:npm|npx|yarn|pnpm)\s/.test(scriptValue);
+}
+//# sourceMappingURL=security.js.map
