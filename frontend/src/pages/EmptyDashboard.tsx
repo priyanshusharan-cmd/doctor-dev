@@ -124,7 +124,7 @@ export default function EmptyDashboard() {
           <GitBranch className="w-4 h-4 text-gray-500" />
           <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">How it works</span>
         </div>
-        <div className="flex items-center gap-2 overflow-x-auto pb-2">
+        <div className="flex items-start gap-2 overflow-x-auto pb-2">
           {[
             { n: 1, label: 'Scan', sub: 'File & stack detection', color: 'text-blue-400 border-blue-800/60 bg-blue-950/30' },
             { n: 2, label: 'Analyze', sub: 'AST + route mapping', color: 'text-purple-400 border-purple-800/60 bg-purple-950/30' },
@@ -133,10 +133,12 @@ export default function EmptyDashboard() {
             { n: 5, label: 'Generate', sub: 'Test suggestions', color: 'text-cyan-400 border-cyan-800/60 bg-cyan-950/30' },
             { n: 6, label: 'Report', sub: 'Health score', color: 'text-green-400 border-green-800/60 bg-green-950/30' },
           ].map((step, i, arr) => (
-            <div key={step.n} className="flex items-center gap-2 flex-shrink-0">
+            <div key={step.n} className="flex items-start gap-2 flex-shrink-0">
               <WorkflowStep {...step} />
               {i < arr.length - 1 && (
-                <ArrowRight className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" />
+                <div className="h-10 flex items-center">
+                  <ArrowRight className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" />
+                </div>
               )}
             </div>
           ))}
