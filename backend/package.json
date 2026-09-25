@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
+    "test": "ts-node src/tests/benchmarks.test.ts",
     "lint": "echo 'lint ok'"
   },
   "dependencies": {

@@ -9,7 +9,8 @@ import { runTests, detectTestScript } from '../runners/testRunner';
 import { buildPriorityFindings, calculateHealthScore } from './prioritizationService';
 import { createAnalysis, setStatus, setResult, setError } from '../models/analysisStore';
 import { isGitHubUrl, cloneGitHubRepo, cleanupClone } from './githubService';
-import type { AnalysisResult, AnalysisStatus, TestProfile } from '../types';
+import { getAllAdaptersFor } from '../analyzers/languages';
+import type { AnalysisResult, AnalysisStatus, TestProfile, CodeSymbol, RouteInfo } from '../types';
 
 const STATUS_LABELS: Record<AnalysisStatus, string> = {
   pending:          'Waiting to start',
@@ -70,9 +71,23 @@ async function runPipeline(
     setStatus(id, 'scanning', STATUS_LABELS.scanning);
     const repositoryProfile = await analyzeRepository(repoPath);
 
-    // ── 2. AST code analysis ───────────────────────────────────────────────
+    // ── 2. AST code analysis (multi-language via adapters) ───────────────────
     setStatus(id, 'analyzing_code', STATUS_LABELS.analyzing_code);
-    const { symbols, routes } = analyzeCode(repoPath, repositoryProfile.sourceFiles);
+    const adapters = getAllAdaptersFor(repoPath, repositoryProfile.sourceFiles);
+    let symbols: CodeSymbol[] = [];
+    let routes: RouteInfo[] = [];
+
+    if (adapters.length > 0) {
+      for (const adapter of adapters) {
+        const parsed = adapter.analyzeCode(repoPath, repositoryProfile.sourceFiles);
+        symbols.push(...parsed.symbols);
+        routes.push(...parsed.routes);
+      }
+    } else {
+      const parsed = analyzeCode(repoPath, repositoryProfile.sourceFiles);
+      symbols = parsed.symbols;
+      routes = parsed.routes;
+    }
 
     // Pre-load source file contents for gap analysis (shared read)
     const sourceContents = new Map<string, string>();

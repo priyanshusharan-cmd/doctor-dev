@@ -15,6 +15,7 @@ const testRunner_1 = require("../runners/testRunner");
 const prioritizationService_1 = require("./prioritizationService");
 const analysisStore_1 = require("../models/analysisStore");
 const githubService_1 = require("./githubService");
+const languages_1 = require("../analyzers/languages");
 const STATUS_LABELS = {
     pending: 'Waiting to start',
     scanning: 'Scanning repository files',
@@ -59,9 +60,23 @@ async function runPipeline(id, rawPath, isGitHub, opts) {
         // ── 1. Scan files ──────────────────────────────────────────────────────
         (0, analysisStore_1.setStatus)(id, 'scanning', STATUS_LABELS.scanning);
         const repositoryProfile = await (0, repositoryAnalyzer_1.analyzeRepository)(repoPath);
-        // ── 2. AST code analysis ───────────────────────────────────────────────
+        // ── 2. AST code analysis (multi-language via adapters) ───────────────────
         (0, analysisStore_1.setStatus)(id, 'analyzing_code', STATUS_LABELS.analyzing_code);
-        const { symbols, routes } = (0, codeAnalyzer_1.analyzeCode)(repoPath, repositoryProfile.sourceFiles);
+        const adapters = (0, languages_1.getAllAdaptersFor)(repoPath, repositoryProfile.sourceFiles);
+        let symbols = [];
+        let routes = [];
+        if (adapters.length > 0) {
+            for (const adapter of adapters) {
+                const parsed = adapter.analyzeCode(repoPath, repositoryProfile.sourceFiles);
+                symbols.push(...parsed.symbols);
+                routes.push(...parsed.routes);
+            }
+        }
+        else {
+            const parsed = (0, codeAnalyzer_1.analyzeCode)(repoPath, repositoryProfile.sourceFiles);
+            symbols = parsed.symbols;
+            routes = parsed.routes;
+        }
         // Pre-load source file contents for gap analysis (shared read)
         const sourceContents = new Map();
         for (const rel of repositoryProfile.sourceFiles.slice(0, 150)) {

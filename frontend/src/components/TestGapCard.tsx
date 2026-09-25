@@ -80,6 +80,22 @@ export default function TestGapCard({ gap }: { gap: TestGap }) {
             <p className="text-xs text-gray-400 leading-relaxed">{gap.reason}</p>
           </div>
 
+          {/* Why DoctorDev believes this */}
+          {gap.whyDoctorDevBelievesThis && (
+            <div className="rounded-xl p-3.5 border" style={{ background: 'rgba(59, 130, 246, 0.04)', borderColor: 'rgba(59, 130, 246, 0.15)' }}>
+              <p className="text-xs text-blue-400 uppercase tracking-wide font-semibold mb-1">Why DoctorDev believes this</p>
+              <p className="text-xs text-gray-300 leading-relaxed">{gap.whyDoctorDevBelievesThis}</p>
+            </div>
+          )}
+
+          {/* Why it may be uncertain */}
+          {gap.whyUncertain && (
+            <div className="rounded-xl p-3.5 border" style={{ background: 'rgba(168, 85, 247, 0.04)', borderColor: 'rgba(168, 85, 247, 0.15)' }}>
+              <p className="text-xs text-purple-400 uppercase tracking-wide font-semibold mb-1">Why it may be uncertain</p>
+              <p className="text-xs text-gray-400 leading-relaxed">{gap.whyUncertain}</p>
+            </div>
+          )}
+
           {/* Evidence */}
           {gap.evidence.length > 0 && (
             <div>

@@ -29,8 +29,23 @@ This document records the results of benchmarking the Doctor Dev repository heal
 - **Fixed Grade**: B (Score: ~81)
 - **Findings**: Axios has a very structured `lib/` and `test/` tree, making it easy for the heuristic mapping to identify `INDIRECTLY_TESTED` coverage status.
 
-## Limitations
+### Node.js (Core Runtime / Monorepo)
+- **Repository**: `https://github.com/nodejs/node.git`
+- **Identified Issues**:
+  - 18,670 test files were previously detected, but only 6 test cases were counted due to rigid `it/test` AST queries.
+  - Secondary python scripts in `tools/` caused the repository to be misclassified as Poetry.
+  - Standard OS/CI environment variables (`PATH`, `TERM`, `GITHUB_ACTIONS`, `P`, `S`) triggered dozens of false-positive "undocumented application env var" findings.
+  - Networking and server backlog numbers (511) and RFC references (RFC 7230) triggered false-positive port drift findings.
+- **Architectural Resolutions**:
+  1. **Primary Ecosystem Priority**: Prioritizes `package.json` for Node.js projects, ensuring Node repositories are never misclassified as Poetry.
+  2. **Test/Fixture Separation**: Separates runnable test files from test fixtures (`test/fixtures/**`), helpers (`test/common/**`), and benchmarks.
+  3. **Multi-Pattern Test Discovery**: Counts standard runner assertions (`common.mustCall`, `assert`, `pytest`, `cargo test`, `go test`) in addition to `it/test` blocks.
+  4. **Semantic Env Var Categorization**: Categorizes env vars into `APPLICATION`, `DATABASE`, `SERVICE`, `CI_CD`, `OS_SHELL`, `NODE_RUNTIME`, `TEST`, `BENCHMARK`, `TOOLING`. Filters out runtime, OS, and CI variables from undocumented app config warnings.
+  5. **Contextual Port Detection**: Strips comments and filters backlog values (511, 128, 1024) and RFC references.
+  6. **Calibrated Confidence**: Low-confidence AST mappings for mature repos with large suites are classified as unconfirmed/partial evidence, preventing false-positive 85% confidence gaps.
 
-1. **Python / Java Support**: The `LanguageAdapter` structure is in place, but parsing Python/Java ASTs to detect routing frameworks and precise function signatures requires language-specific parsers (like Tree-Sitter or an external daemon) which are not yet fully implemented.
-2. **Missing Coverage Parsers**: The `ACTUAL_COVERAGE` status successfully triggers if `lcov.info` is present, but we currently mock a high percentage rather than parsing the LCOV/JSON directly to get an exact number.
-3. **Advanced Framework Mapping**: Frameworks like Fastify define routes differently than Express (`fastify.get(...)` vs `app.get(...)`). Our routing Regex may need expanding to capture all ecosystem nuances.
+## Limitations & Future Extensions
+
+1. **Additional Language ASTs**: Java, Go, Rust, and C# adapters can be expanded with Tree-sitter or external AST tools. Python adapter now supports function, class, route, and pytest discovery.
+2. **Actual Coverage Parsers**: Real LCOV and `coverage-summary.json` parsers are now active.
+3. **Advanced Framework Mapping**: Framework-specific routing models can be registered per framework.

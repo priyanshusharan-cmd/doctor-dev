@@ -59,6 +59,22 @@ export default function ConfigIssueCard({ issue }: { issue: ConfigIssue }) {
         <div className="px-4 pb-5 pt-0 border-t border-gray-800/40 space-y-4">
           <p className="text-sm text-gray-300 leading-relaxed pt-4">{issue.description}</p>
 
+          {/* Why DoctorDev believes this */}
+          {issue.whyDoctorDevBelievesThis && (
+            <div className="rounded-xl p-3.5 border" style={{ background: 'rgba(59, 130, 246, 0.04)', borderColor: 'rgba(59, 130, 246, 0.15)' }}>
+              <p className="text-xs text-blue-400 uppercase tracking-wide font-semibold mb-1">Why DoctorDev believes this</p>
+              <p className="text-xs text-gray-300 leading-relaxed">{issue.whyDoctorDevBelievesThis}</p>
+            </div>
+          )}
+
+          {/* Why it may be uncertain */}
+          {issue.whyUncertain && (
+            <div className="rounded-xl p-3.5 border" style={{ background: 'rgba(168, 85, 247, 0.04)', borderColor: 'rgba(168, 85, 247, 0.15)' }}>
+              <p className="text-xs text-purple-400 uppercase tracking-wide font-semibold mb-1">Why it may be uncertain</p>
+              <p className="text-xs text-gray-400 leading-relaxed">{issue.whyUncertain}</p>
+            </div>
+          )}
+
           {/* Evidence */}
           {issue.evidence.length > 0 && (
             <div>

@@ -60,21 +60,29 @@ function buildTestMappings(sourceFiles, testProfile) {
                 status = 'PARTIALLY_TESTED';
         }
         else if (testProfile.totalTestFiles > 0) {
-            // If there are tests in the repo, but we just can't map them
-            status = 'NOT_ENOUGH_EVIDENCE';
-            evidence.push('Tests exist in repository but no direct mapping found.');
+            const hasIntegrationSuites = testProfile.suites.some((s) => /(?:integration|e2e|system|parallel|sequential|acceptance)/i.test(s.filePath));
+            if (hasIntegrationSuites) {
+                status = 'INDIRECTLY_TESTED';
+                confidence = 0.55;
+                evidence.push('Repository has integration/system test suites that exercise application behavior indirectly.');
+            }
+            else {
+                status = 'NOT_ENOUGH_EVIDENCE';
+                confidence = 0.35;
+                evidence.push('Tests exist in repository but no direct symbol or import mapping was identified.');
+            }
         }
         // Actual coverage overrides
         if (testProfile.coverage.status === 'ACTUAL_COVERAGE' && unique.length === 0) {
-            status = 'NOT_ENOUGH_EVIDENCE';
-            confidence = 0.5;
-            evidence.push('Relying on actual coverage report rather than heuristics.');
+            status = 'PARTIALLY_TESTED';
+            confidence = 0.6;
+            evidence.push(`Relying on repository actual coverage report (${testProfile.coverage.percentage ?? 80}%).`);
         }
         mappings.push({
             sourceFile: sf,
             relatedTests: unique,
             coverageStatus: status,
-            confidence: unique.length > 0 ? confidence : 0,
+            confidence: unique.length > 0 ? confidence : (status === 'INDIRECTLY_TESTED' ? 0.55 : 0.35),
             evidence,
         });
     }
@@ -145,57 +153,85 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
         && s.sourceType === 'production');
     for (const sym of importantSymbols) {
         const mapping = mappingByFile.get(sym.filePath);
-        const hasTests = mapping && mapping.coverageStatus === 'DIRECTLY_TESTED' || mapping?.coverageStatus === 'INDIRECTLY_TESTED';
+        const hasDirectTests = mapping?.coverageStatus === 'DIRECTLY_TESTED';
+        const hasIndirectTests = mapping?.coverageStatus === 'INDIRECTLY_TESTED';
         const isUnknown = mapping?.coverageStatus === 'NOT_ENOUGH_EVIDENCE';
+        const isNotTested = mapping?.coverageStatus === 'NOT_TESTED';
         const content = sourceContents.get(sym.filePath) ?? '';
         // Determine gap category
         let category = null;
         let severity = 'low';
+        let confidence = 0.5;
         let reason = '';
+        let whyBelieves = '';
+        let whyUncertain = undefined;
         const evidence = [];
-        if (!hasTests) {
+        if (isNotTested && testProfile.totalTestFiles === 0) {
             category = 'no_test';
             severity = sym.importance === 'critical' ? 'critical' : sym.importance === 'high' ? 'high' : 'medium';
-            if (isUnknown) {
-                severity = 'low'; // Downgrade severity if we just can't map it properly
-                reason = `Testing evidence insufficient for ${sym.name} (tests exist but could not confidently link to this file).`;
-            }
-            else {
-                reason = `${sym.name} has importance "${sym.importance}" (${sym.importanceReasons.join(', ')}) but no test file appears to cover ${sym.filePath}`;
-            }
+            confidence = 0.95;
+            reason = `Repository has no automated test suite. ${sym.name} (${sym.importance}) is unverified.`;
+            whyBelieves = `No test files or test runner configuration were found in the repository.`;
             evidence.push(`Symbol: ${sym.name} (${sym.kind}) at ${sym.filePath}:${sym.lineStart}`);
             evidence.push(`Importance signals: ${sym.importanceReasons.join(', ')}`);
+        }
+        else if (isNotTested) {
+            category = 'no_test';
+            severity = sym.importance === 'critical' ? 'high' : 'medium';
+            confidence = 0.75;
+            reason = `${sym.name} has importance "${sym.importance}" but no test file covers ${sym.filePath}.`;
+            whyBelieves = `No direct test file, test imports, or directory matches link to ${sym.filePath}.`;
+            whyUncertain = testProfile.totalTestFiles > 20
+                ? `Repository has ${testProfile.totalTestFiles} test files; integration tests may exercise this indirectly.`
+                : undefined;
+            evidence.push(`Symbol: ${sym.name} (${sym.kind}) at ${sym.filePath}:${sym.lineStart}`);
             if (mapping)
                 evidence.push(...mapping.evidence);
         }
-        else if (hasTests && ERROR_HANDLING_RE.test(content)) {
-            // Has tests but likely missing error coverage
+        else if (isUnknown) {
+            category = 'partial_test';
+            severity = 'low';
+            confidence = 0.35;
+            reason = `Testing evidence is insufficient for ${sym.name}. Tests exist in the repository, but direct coverage could not be verified via static AST.`;
+            whyBelieves = `No direct test file matching "${sym.filePath}" was found.`;
+            whyUncertain = `Repository has ${testProfile.totalTestFiles} test files and ${testProfile.totalTestCount} test cases. This file may be covered via runtime or integration suites.`;
+            evidence.push(`Symbol: ${sym.name} (${sym.kind}) at ${sym.filePath}:${sym.lineStart}`);
+            if (mapping)
+                evidence.push(...mapping.evidence);
+        }
+        else if (hasDirectTests && ERROR_HANDLING_RE.test(content)) {
             const suite = testProfile.suites.find((s) => mapping.relatedTests.includes(s.filePath));
             const allTestText = suite ? [...suite.itBlocks, ...suite.describeBlocks].join(' ').toLowerCase() : '';
             const hasErrorTest = /error|fail|reject|throw|invalid|exception/.test(allTestText);
             if (!hasErrorTest) {
                 category = 'missing_error_test';
                 severity = sym.importance === 'critical' ? 'high' : 'medium';
-                reason = `${sym.name} contains error handling logic but no error-path tests were detected`;
-                evidence.push(`Error handling found in ${sym.filePath}`);
+                confidence = 0.75;
+                reason = `${sym.name} contains error handling logic but no error-path tests were detected in its suite`;
+                whyBelieves = `Source file contains try/catch/throw/reject blocks, but test descriptions only cover happy paths.`;
+                whyUncertain = `Test assertions may verify errors without mentioning them in describe/it titles.`;
+                evidence.push(`Error handling detected in ${sym.filePath}`);
                 if (suite)
-                    evidence.push(`Existing test descriptions do not mention error/fail/reject`);
+                    evidence.push(`Existing test suite (${suite.filePath}) lacks error-path test cases.`);
             }
         }
-        // Auth gap: has auth logic, no auth test
+        else if (hasIndirectTests) {
+            continue;
+        }
+        // Auth gap
         if (AUTH_RE.test(content) &&
             AUTH_RE.test(sym.name + sym.importanceReasons.join(' '))) {
             const suite = testProfile.suites.find((s) => mapping?.relatedTests.includes(s.filePath));
             const allTestText = suite ? [...suite.itBlocks, ...suite.describeBlocks].join(' ').toLowerCase() : '';
             const hasAuthTest = /auth|unauthorized|forbidden|permission|role/.test(allTestText);
-            if (!hasAuthTest) {
-                // Only add auth gap if we haven't already added a no_test gap for this symbol
-                if (category === null) {
-                    category = 'missing_auth_test';
-                    severity = 'high';
-                    reason = `${sym.name} involves authentication/authorization but no auth-related tests detected`;
-                    evidence.push(`Auth pattern found in ${sym.filePath}:${sym.lineStart}`);
-                }
+            if (!hasAuthTest && category === null) {
+                category = 'missing_auth_test';
+                severity = 'high';
+                confidence = 0.8;
+                reason = `${sym.name} involves authentication/authorization but no auth-related tests detected`;
+                whyBelieves = `Function signature and body contain authentication keywords, but no security-focused test cases were found.`;
+                whyUncertain = `Authorization middleware may be tested independently in a shared suite.`;
+                evidence.push(`Auth pattern found in ${sym.filePath}:${sym.lineStart}`);
             }
         }
         if (!category)
@@ -204,10 +240,10 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
         gaps.push({
             id: (0, uuid_1.v4)(),
             severity,
-            confidence: hasTests ? 0.7 : 0.85,
+            confidence,
             category,
-            title: `${category === 'no_test' ? 'No test for' : 'Incomplete tests for'}: ${sym.name}`,
-            description: `The ${sym.kind} \`${sym.name}\` in \`${sym.filePath}\` ${category === 'no_test' ? 'has no automated test coverage' : 'has tests but is missing important test scenarios'}.`,
+            title: `${category === 'no_test' ? 'No test for' : category === 'partial_test' ? 'Unconfirmed coverage for' : 'Incomplete tests for'}: ${sym.name}`,
+            description: `The ${sym.kind} \`${sym.name}\` in \`${sym.filePath}\` ${category === 'no_test' ? 'has no automated test coverage' : category === 'partial_test' ? 'could not be linked to test files via static analysis' : 'has tests but is missing important test scenarios'}.`,
             filePath: sym.filePath,
             symbolName: sym.name,
             lineStart: sym.lineStart,
@@ -215,6 +251,8 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
             evidence,
             existingTests: mapping?.relatedTests ?? [],
             recommendedTests,
+            whyDoctorDevBelievesThis: whyBelieves || reason,
+            whyUncertain,
         });
     }
     // ── 2. Route-level gaps (API routes with no test) ─────────────────────────
@@ -223,10 +261,9 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
             continue;
         const mapping = mappingByFile.get(route.filePath);
         const isUnknown = mapping?.coverageStatus === 'NOT_ENOUGH_EVIDENCE';
-        const hasTests = mapping && mapping.coverageStatus === 'DIRECTLY_TESTED' || mapping?.coverageStatus === 'INDIRECTLY_TESTED';
+        const hasTests = mapping && (mapping.coverageStatus === 'DIRECTLY_TESTED' || mapping.coverageStatus === 'INDIRECTLY_TESTED');
         let covered = false;
         if (hasTests) {
-            // Check if any test mentions this route path
             const routePath = route.path.toLowerCase().replace(/[/:]/g, ' ');
             covered = testProfile.suites.some((s) => mapping.relatedTests.includes(s.filePath) &&
                 [...s.itBlocks, ...s.describeBlocks].some((b) => {
@@ -237,16 +274,14 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
             if (covered)
                 continue;
         }
-        // If it's an unknown framework/coverage state, we shouldn't penalize harshly
         if (isUnknown) {
-            continue; // Skip creating a false positive route gap if we just don't understand the testing setup well enough
+            continue;
         }
-        // Route has no test coverage
         const isAuthRoute = AUTH_RE.test(route.path + (route.handlerName ?? ''));
         gaps.push({
             id: (0, uuid_1.v4)(),
             severity: isAuthRoute ? 'critical' : 'high',
-            confidence: 0.9,
+            confidence: 0.85,
             category: 'no_test',
             title: `API route not tested: ${route.method} ${route.path}`,
             description: `The API route \`${route.method} ${route.path}\` defined in \`${route.filePath}\` has no detected test coverage.`,
@@ -261,6 +296,8 @@ function findTestingGaps(symbols, routes, mappings, testProfile, sourceContents)
                 `should return 4xx for invalid input to ${route.method} ${route.path}`,
                 isAuthRoute ? `should return 401 for unauthenticated ${route.method} ${route.path}` : `should handle edge cases in ${route.method} ${route.path}`,
             ],
+            whyDoctorDevBelievesThis: `Found route registration in ${route.filePath}:${route.line}, but no test suite asserts this endpoint.`,
+            whyUncertain: 'May be called indirectly during integration or system tests.',
         });
     }
     // Sort: critical first, then by confidence desc

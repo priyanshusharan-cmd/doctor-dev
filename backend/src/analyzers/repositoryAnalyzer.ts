@@ -7,6 +7,7 @@ import type {
   Language,
   PackageManager,
   TestFramework,
+  TestFrameworkEvidence,
 } from '../types';
 
 // ─── Patterns ─────────────────────────────────────────────────────────────────
@@ -62,22 +63,45 @@ const IGNORE_DIRS = [
   '**/vendor/**',
 ];
 
-/** Detect language from the presence of source files. */
+/** Detect primary ecosystem from root files and language presence */
+export function detectPrimaryEcosystem(repoPath: string, language: Language): string {
+  if (fileExists(path.join(repoPath, 'package.json'))) return 'node';
+  if (fileExists(path.join(repoPath, 'Cargo.toml'))) return 'rust';
+  if (fileExists(path.join(repoPath, 'go.mod'))) return 'go';
+  if (fileExists(path.join(repoPath, 'pom.xml')) || fileExists(path.join(repoPath, 'build.gradle'))) return 'java';
+  if (fileExists(path.join(repoPath, 'pyproject.toml')) || fileExists(path.join(repoPath, 'requirements.txt')) || fileExists(path.join(repoPath, 'Pipfile'))) return 'python';
+  if (fileExists(path.join(repoPath, 'composer.json'))) return 'php';
+  if (fileExists(path.join(repoPath, 'Gemfile'))) return 'ruby';
+
+  if (language === 'typescript' || language === 'javascript' || language === 'mixed') return 'node';
+  if (language === 'python') return 'python';
+  if (language === 'rust') return 'rust';
+  if (language === 'go') return 'go';
+  if (language === 'java') return 'java';
+  return 'unknown';
+}
+
+/** Detect language from the presence of source files. Exclude build/tools/benchmarks from core ratio. */
 function detectLanguage(sourceFiles: string[]): Language {
   let js = 0, ts = 0, py = 0, java = 0, go = 0, rs = 0, rb = 0, php = 0, cpp = 0;
   for (const f of sourceFiles) {
-    if (f.endsWith('.ts') || f.endsWith('.tsx')) ts++;
-    else if (f.endsWith('.js') || f.endsWith('.jsx') || f.endsWith('.mjs')) js++;
-    else if (f.endsWith('.py')) py++;
-    else if (f.endsWith('.java')) java++;
-    else if (f.endsWith('.go')) go++;
-    else if (f.endsWith('.rs')) rs++;
-    else if (f.endsWith('.rb')) rb++;
-    else if (f.endsWith('.php')) php++;
-    else if (f.endsWith('.cpp') || f.endsWith('.c')) cpp++;
+    const norm = f.replace(/\\/g, '/').toLowerCase();
+    // De-prioritize auxiliary scripts in tooling/build/benchmarks when counting primary language
+    const isAuxiliary = /(^|\/)(tools?|scripts?|benchmarks?|bench|fixtures?)\//.test(norm);
+    const weight = isAuxiliary ? 0.2 : 1.0;
+
+    if (f.endsWith('.ts') || f.endsWith('.tsx')) ts += weight;
+    else if (f.endsWith('.js') || f.endsWith('.jsx') || f.endsWith('.mjs')) js += weight;
+    else if (f.endsWith('.py')) py += weight;
+    else if (f.endsWith('.java')) java += weight;
+    else if (f.endsWith('.go')) go += weight;
+    else if (f.endsWith('.rs')) rs += weight;
+    else if (f.endsWith('.rb')) rb += weight;
+    else if (f.endsWith('.php')) php += weight;
+    else if (f.endsWith('.cpp') || f.endsWith('.c')) cpp += weight;
   }
 
-  const counts = { typescript: ts, javascript: js, python: py, java, go, rust: rs, ruby: rb, php, 'c++': cpp };
+  const counts: Record<string, number> = { typescript: ts, javascript: js, python: py, java, go, rust: rs, ruby: rb, php, 'c++': cpp };
   let maxLang: Language = 'unknown';
   let maxCount = 0;
   for (const [lang, count] of Object.entries(counts)) {
@@ -87,55 +111,173 @@ function detectLanguage(sourceFiles: string[]): Language {
     }
   }
 
-  if (maxLang === 'typescript' && js > 0) return 'mixed'; // backwards compatibility
+  if (maxLang === 'typescript' && js > 0) return 'mixed';
   return maxLang;
 }
 
-/** Detect package manager from lockfile or config presence. */
-function detectPackageManager(repoPath: string): PackageManager {
-  if (fileExists(path.join(repoPath, 'pnpm-lock.yaml'))) return 'pnpm';
-  if (fileExists(path.join(repoPath, 'yarn.lock'))) return 'yarn';
-  if (fileExists(path.join(repoPath, 'package-lock.json'))) return 'npm';
-  if (fileExists(path.join(repoPath, 'requirements.txt'))) return 'pip';
-  if (fileExists(path.join(repoPath, 'poetry.lock')) || fileExists(path.join(repoPath, 'pyproject.toml'))) return 'poetry';
+/** Detect package manager from ecosystem and lockfiles. Never pick Poetry for Node.js! */
+function detectPackageManager(
+  repoPath: string,
+  primaryEcosystem: string,
+  pkg?: { packageManager?: string },
+): PackageManager {
+  // If primary ecosystem is Node/JS, prioritize JS package managers strictly
+  if (primaryEcosystem === 'node' || fileExists(path.join(repoPath, 'package.json'))) {
+    if (fileExists(path.join(repoPath, 'pnpm-lock.yaml'))) return 'pnpm';
+    if (fileExists(path.join(repoPath, 'yarn.lock'))) return 'yarn';
+    if (fileExists(path.join(repoPath, 'package-lock.json'))) return 'npm';
+    if (pkg?.packageManager) {
+      if (pkg.packageManager.startsWith('pnpm')) return 'pnpm';
+      if (pkg.packageManager.startsWith('yarn')) return 'yarn';
+      if (pkg.packageManager.startsWith('bun') || pkg.packageManager.startsWith('npm')) return 'npm';
+    }
+    return 'npm'; // Standard fallback for Node projects
+  }
+
+  // Rust
+  if (primaryEcosystem === 'rust' || fileExists(path.join(repoPath, 'Cargo.toml'))) return 'cargo';
+
+  // Go
+  if (primaryEcosystem === 'go' || fileExists(path.join(repoPath, 'go.mod'))) return 'go-modules';
+
+  // Java
   if (fileExists(path.join(repoPath, 'pom.xml'))) return 'maven';
   if (fileExists(path.join(repoPath, 'build.gradle'))) return 'gradle';
-  if (fileExists(path.join(repoPath, 'Cargo.toml'))) return 'cargo';
-  if (fileExists(path.join(repoPath, 'go.mod'))) return 'go-modules';
+
+  // Python
+  if (primaryEcosystem === 'python' || fileExists(path.join(repoPath, 'pyproject.toml')) || fileExists(path.join(repoPath, 'requirements.txt'))) {
+    if (fileExists(path.join(repoPath, 'poetry.lock'))) return 'poetry';
+    const pyproject = readFileSafe(path.join(repoPath, 'pyproject.toml'));
+    if (pyproject && pyproject.includes('[tool.poetry]')) return 'poetry';
+    if (fileExists(path.join(repoPath, 'Pipfile'))) return 'pip';
+    return 'pip';
+  }
+
   if (fileExists(path.join(repoPath, 'Gemfile'))) return 'bundler';
   if (fileExists(path.join(repoPath, 'composer.json'))) return 'composer';
   return 'unknown';
 }
 
-/** Detect test frameworks from devDependencies and config files. */
-function detectTestFrameworks(
+/**
+ * Detect repository-level test execution model with confidence and evidence.
+ * Inspects package.json scripts, configs, test runner CLIs, dependencies, and directory conventions.
+ */
+function detectTestExecutionModel(
+  repoPath: string,
+  scripts: Record<string, string>,
   devDeps: Record<string, string>,
   configFiles: string[],
-): TestFramework[] {
-  const found = new Set<TestFramework>();
-  const allKeys = Object.keys(devDeps).map((k) => k.toLowerCase());
+): { frameworks: TestFramework[]; evidence: TestFrameworkEvidence } {
+  const allScripts = Object.entries(scripts).map(([k, v]) => `${k}: ${v}`.toLowerCase());
+  const devDepKeys = Object.keys(devDeps).map((k) => k.toLowerCase());
   const configNames = configFiles.map((f) => path.basename(f).toLowerCase());
 
-  // JS/TS
-  if (allKeys.some((k) => k === 'jest' || k.startsWith('@jest/'))) found.add('jest');
-  if (allKeys.some((k) => k === 'vitest')) found.add('vitest');
-  if (allKeys.some((k) => k === 'mocha' || k === '@types/mocha')) found.add('mocha');
-  if (allKeys.some((k) => k === 'jasmine' || k === 'jasmine-core')) found.add('jasmine');
-  if (allKeys.some((k) => k === 'ava')) found.add('ava');
+  const evidenceList: string[] = [];
+  let detectedFramework: TestFramework = 'unknown';
+  let confidence = 0.5;
+  let executionModel: TestFrameworkEvidence['executionModel'] = 'unknown';
 
-  // Fallback config files for all languages
-  if (configNames.some((n) => n.startsWith('jest.config'))) found.add('jest');
-  if (configNames.some((n) => n.startsWith('vitest.config'))) found.add('vitest');
-  if (configNames.some((n) => n.startsWith('.mocharc'))) found.add('mocha');
-  
-  if (configNames.some((n) => n.includes('pytest'))) found.add('pytest');
-  if (configNames.some((n) => n.includes('pom.xml') || n.includes('build.gradle'))) found.add('junit'); // simple assumption for Java
-  if (configNames.some((n) => n === 'cargo.toml')) found.add('cargo-test');
-  if (configNames.some((n) => n === 'go.mod')) found.add('go-test');
-  if (configNames.some((n) => n === 'composer.json')) found.add('phpunit');
-  if (configNames.some((n) => n === 'gemfile')) found.add('rspec');
+  // 1. Check package.json scripts (strongest direct evidence of execution model)
+  const testScript = scripts['test'] ?? scripts['test:unit'] ?? scripts['test:all'] ?? '';
+  const testScriptLower = testScript.toLowerCase();
 
-  return Array.from(found);
+  if (testScriptLower.includes('mocha') || allScripts.some((s) => s.includes('mocha '))) {
+    detectedFramework = 'mocha';
+    confidence = 0.95;
+    executionModel = 'cli_runner';
+    evidenceList.push(`Test script invokes Mocha CLI: "${testScript || 'mocha'}"`);
+  } else if (testScriptLower.includes('vitest') || allScripts.some((s) => s.includes('vitest'))) {
+    detectedFramework = 'vitest';
+    confidence = 0.95;
+    executionModel = 'cli_runner';
+    evidenceList.push(`Test script invokes Vitest CLI: "${testScript}"`);
+  } else if (testScriptLower.includes('jest') || allScripts.some((s) => s.includes('jest'))) {
+    detectedFramework = 'jest';
+    confidence = 0.95;
+    executionModel = 'cli_runner';
+    evidenceList.push(`Test script invokes Jest CLI: "${testScript}"`);
+  } else if (testScriptLower.includes('node --test') || testScriptLower.includes('node test/')) {
+    detectedFramework = 'node-test' as unknown as TestFramework;
+    confidence = 0.9;
+    executionModel = 'builtin_runner';
+    evidenceList.push(`Test script invokes Node built-in test runner: "${testScript}"`);
+  } else if (testScriptLower.includes('pytest')) {
+    detectedFramework = 'pytest';
+    confidence = 0.95;
+    executionModel = 'cli_runner';
+    evidenceList.push(`Test script invokes pytest: "${testScript}"`);
+  }
+
+  // 2. Check config files if not already high confidence
+  if (confidence < 0.9) {
+    if (configNames.some((n) => n.startsWith('.mocharc') || n === 'mocha.opts')) {
+      detectedFramework = 'mocha';
+      confidence = 0.9;
+      executionModel = 'cli_runner';
+      evidenceList.push('Found Mocha configuration file (.mocharc)');
+    } else if (configNames.some((n) => n.startsWith('vitest.config'))) {
+      detectedFramework = 'vitest';
+      confidence = 0.9;
+      executionModel = 'cli_runner';
+      evidenceList.push('Found Vitest configuration file (vitest.config)');
+    } else if (configNames.some((n) => n.startsWith('jest.config'))) {
+      detectedFramework = 'jest';
+      confidence = 0.9;
+      executionModel = 'cli_runner';
+      evidenceList.push('Found Jest configuration file (jest.config)');
+    } else if (configNames.some((n) => n === 'pytest.ini' || n === 'setup.cfg')) {
+      detectedFramework = 'pytest';
+      confidence = 0.85;
+      executionModel = 'cli_runner';
+      evidenceList.push('Found Pytest configuration file');
+    } else if (configNames.some((n) => n === 'cargo.toml')) {
+      detectedFramework = 'cargo-test';
+      confidence = 0.85;
+      executionModel = 'builtin_runner';
+      evidenceList.push('Rust repository using standard cargo test');
+    } else if (configNames.some((n) => n === 'go.mod')) {
+      detectedFramework = 'go-test';
+      confidence = 0.85;
+      executionModel = 'builtin_runner';
+      evidenceList.push('Go repository using standard go test');
+    }
+  }
+
+  // 3. Fallback to installed devDependencies
+  if (confidence < 0.8) {
+    if (devDepKeys.includes('mocha') || devDepKeys.includes('@types/mocha')) {
+      detectedFramework = 'mocha';
+      confidence = 0.75;
+      executionModel = 'cli_runner';
+      evidenceList.push('Mocha installed in devDependencies');
+    } else if (devDepKeys.includes('vitest')) {
+      detectedFramework = 'vitest';
+      confidence = 0.75;
+      executionModel = 'cli_runner';
+      evidenceList.push('Vitest installed in devDependencies');
+    } else if (devDepKeys.includes('jest') || devDepKeys.some((k) => k.startsWith('@jest/'))) {
+      detectedFramework = 'jest';
+      confidence = 0.75;
+      executionModel = 'cli_runner';
+      evidenceList.push('Jest installed in devDependencies');
+    }
+  }
+
+  if (evidenceList.length === 0) {
+    evidenceList.push('No explicit test runner script or configuration detected');
+  }
+
+  const frameworks: TestFramework[] = detectedFramework !== 'unknown' ? [detectedFramework] : [];
+
+  return {
+    frameworks,
+    evidence: {
+      framework: detectedFramework,
+      confidence,
+      evidence: evidenceList,
+      executionModel,
+    },
+  };
 }
 
 /** Detect the primary framework from dependencies. */
@@ -212,16 +354,40 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
     followSymbolicLinks: false,
   });
 
-  // ── 2. Test files (subset of source files matching test patterns) ──────────
-  const testFilesSet = await fg(TEST_PATTERNS, {
+  // ── 2. Test files, fixtures, helpers, benchmarks separation ──────────────
+  const rawTestFiles = await fg(TEST_PATTERNS, {
     cwd: repoPath,
     ignore: IGNORE_DIRS,
     absolute: false,
     followSymbolicLinks: false,
   });
-  const testFilesNorm = new Set(testFilesSet.map((f) => f.replace(/\\/g, '/')));
 
-  const pureSourceFiles = allSourceFiles.filter((f) => !testFilesNorm.has(f.replace(/\\/g, '/')));
+  const testFiles: string[] = [];
+  const fixtureFiles: string[] = [];
+  const helperFiles: string[] = [];
+  const benchmarkFiles: string[] = [];
+
+  for (const raw of rawTestFiles) {
+    const norm = raw.replace(/\\/g, '/');
+    const lower = norm.toLowerCase();
+    if (/(^|\/)(fixtures?|__fixtures__|samples?)\//.test(lower)) {
+      fixtureFiles.push(norm);
+    } else if (/(^|\/)(common|helpers?|mocks?|__mocks__|support)\//.test(lower)) {
+      helperFiles.push(norm);
+    } else if (/(^|\/)(benchmarks?|bench)\//.test(lower)) {
+      benchmarkFiles.push(norm);
+    } else {
+      testFiles.push(norm);
+    }
+  }
+
+  const nonProdFiles = new Set([
+    ...testFiles,
+    ...fixtureFiles,
+    ...helperFiles,
+    ...benchmarkFiles,
+  ]);
+  const pureSourceFiles = allSourceFiles.filter((f) => !nonProdFiles.has(f.replace(/\\/g, '/')));
 
   // ── 3. Config files ────────────────────────────────────────────────────────
   const configFiles = await fg(CONFIG_FILE_NAMES, {
@@ -239,6 +405,7 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
     version?: string;
     main?: string;
     module?: string;
+    packageManager?: string;
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
     scripts?: Record<string, string>;
@@ -266,8 +433,9 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
 
   // ── 5. Derived attributes ──────────────────────────────────────────────────
   const language = detectLanguage(pureSourceFiles);
-  const packageManager = detectPackageManager(repoPath);
-  const testFrameworks = detectTestFrameworks(devDependencies, configFiles);
+  const primaryEcosystem = detectPrimaryEcosystem(repoPath, language);
+  const packageManager = detectPackageManager(repoPath, primaryEcosystem, pkg ?? undefined);
+  const testModel = detectTestExecutionModel(repoPath, scripts, devDependencies, configFiles);
   const framework = detectFramework(dependencies, devDependencies);
   const isGitRepo = fileExists(path.join(repoPath, '.git'));
   const gitRemote = isGitRepo ? detectGitRemote(repoPath) : undefined;
@@ -288,9 +456,11 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
     name: pkg?.name ?? repoName(repoPath),
     description: pkg?.description,
     language,
+    primaryEcosystem,
     packageManager,
     framework,
-    testFrameworks,
+    testFrameworks: testModel.frameworks.length > 0 ? testModel.frameworks : ['unknown'],
+    testFrameworkEvidence: testModel.evidence,
     nodeVersion,
     isMonorepo,
     workspaces,
@@ -301,7 +471,10 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
     gitRemote,
     totalFiles: allFiles.length,
     sourceFiles: pureSourceFiles,
-    testFiles: Array.from(testFilesNorm),
+    testFiles,
+    fixtureFiles,
+    helperFiles,
+    benchmarkFiles,
     configFiles,
     entryPoints,
     hasTypes,

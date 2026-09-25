@@ -63,9 +63,18 @@ export default function RepoOverviewCard({ meta }: Props) {
         </Row>
 
         <Row icon={<FlaskConical />} label="Test frameworks">
-          {meta.testFrameworks.length > 0
-            ? meta.testFrameworks.map((f) => <Chip key={f} variant="purple">{f}</Chip>)
-            : <span className="text-xs text-gray-600">None detected</span>}
+          {meta.testFrameworks.length > 0 ? (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {meta.testFrameworks.map((f) => <Chip key={f} variant="purple">{f}</Chip>)}
+              {meta.testFrameworkEvidence && meta.testFrameworkEvidence.confidence > 0 && (
+                <span className="text-[11px] text-gray-500 font-mono">
+                  ({Math.round(meta.testFrameworkEvidence.confidence * 100)}% confidence via {meta.testFrameworkEvidence.executionModel.replace('_', ' ')})
+                </span>
+              )}
+            </div>
+          ) : (
+            <span className="text-xs text-gray-600">None detected</span>
+          )}
         </Row>
 
         <Row icon={<Package />} label="Dependencies">

@@ -53,6 +53,8 @@ function parseEnvNames(content: string): string[] {
     .filter((n): n is string => n !== null);
 }
 
+import { categorizeEnvVar, stripComments } from './configAnalyzer';
+
 export async function analyzeEnvVars(
   repoPath: string,
   sourceFiles: string[],
@@ -99,25 +101,35 @@ export async function analyzeEnvVars(
     const def = Array.from(defined.get(name) ?? []);
     const usedIn = Array.from(used.get(name) ?? []);
     const secret = isSecretName(name);
+    const category = categorizeEnvVar(name);
 
     envVars.push({
       name,
+      category,
       definedIn: def,
       usedIn,
       hasDefault: defaults.has(name),
       isSecret: secret,
     });
 
-    // Issue: used but not documented
-    if (usedIn.length > 0 && def.length === 0 && !defaults.has(name)) {
+    // Only report 'undocumented environment variable' when it appears to be application/configuration-specific.
+    // OS, SHELL, NODE_RUNTIME, CI/CD, TEST, BENCHMARK, and single/two-letter variables are never reported.
+    const isAppSpecific = category === 'APPLICATION' || category === 'DATABASE' || category === 'SERVICE';
+    const isRuntimeOrSystem = category === 'OS_SHELL' || category === 'NODE_RUNTIME' || category === 'CI_CD' || category === 'TEST' || category === 'BENCHMARK' || category === 'TOOLING' || name.length <= 2;
+
+    if (usedIn.length > 0 && def.length === 0 && !defaults.has(name) && isAppSpecific && !isRuntimeOrSystem) {
       issues.push(issue(
         secret ? 'high' : 'medium',
         0.85,
         'environment',
-        `Undocumented environment variable: ${name}`,
-        `\`${name}\` is referenced in source code but not defined in any .env.example or .env.template file.`,
+        `Undocumented application environment variable: ${name}`,
+        `\`${name}\` is referenced in application code but not defined or documented in any .env.example or template file.`,
         `Add \`${name}=${secret ? '<secret>' : '<value>'}\` to your .env.example file.`,
-        { evidence: [`Used in: ${usedIn.slice(0, 3).join(', ')}`] },
+        {
+          evidence: [`Used in: ${usedIn.slice(0, 3).join(', ')}`],
+          whyDoctorDevBelievesThis: `Found references to process.env.${name} across application files (${usedIn.slice(0, 2).join(', ')}), but no definition in configuration templates.`,
+          whyUncertain: defaults.has(name) ? 'May have runtime fallback in application code.' : undefined,
+        },
       ));
     }
   }
@@ -127,7 +139,7 @@ export async function analyzeEnvVars(
 
 // ─── Port analysis ────────────────────────────────────────────────────────────
 
-const PORT_RE = /(?:port|PORT|listen|EXPOSE)\D{0,20}(\d{2,5})/gi;
+const BACKLOG_SET = new Set([128, 256, 511, 512, 1024, 2048, 4096]);
 const PORT_RANGE = { min: 80, max: 65535 };
 
 export async function analyzePortsAndDocker(
@@ -144,46 +156,102 @@ export async function analyzePortsAndDocker(
   ].slice(0, 150);
 
   for (const relPath of filesToScan) {
-    const content = readFileSafe(path.join(repoPath, relPath));
-    if (!content) continue;
+    const rawContent = readFileSafe(path.join(repoPath, relPath));
+    if (!rawContent) continue;
+
+    const isDocker = /dockerfile|docker-compose/i.test(relPath);
+    const content = isDocker ? rawContent : stripComments(rawContent);
     const lines = content.split('\n');
+
     lines.forEach((line, idx) => {
-      const re = new RegExp(PORT_RE.source, 'gi');
-      let m: RegExpExecArray | null;
-      while ((m = re.exec(line)) !== null) {
-        const port = parseInt(m[1], 10);
-        if (port < PORT_RANGE.min || port > PORT_RANGE.max) continue;
-        const key = `${relPath}:${port}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        mentions.push({ port, filePath: relPath, context: line.trim().slice(0, 80), line: idx + 1 });
+      // Exclude lines with RFC, backlog, timeout, status codes
+      if (/\b(?:rfc|status|bytes|timeout|delay|backlog|sample|max)\b/i.test(line)) return;
+
+      // 1. Docker EXPOSE
+      const exp = line.match(/^\s*EXPOSE\s+(\d{2,5})/i);
+      if (exp) {
+        const port = parseInt(exp[1], 10);
+        if (port >= PORT_RANGE.min && port <= PORT_RANGE.max) {
+          const key = `${relPath}:${port}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            mentions.push({
+              port,
+              filePath: relPath,
+              context: line.trim().slice(0, 80),
+              line: idx + 1,
+              role: 'docker_expose',
+              isServerListen: true,
+            });
+          }
+        }
+      }
+
+      // 2. Server listen
+      const lis = line.match(/\.listen\s*\(\s*(?:\{\s*port:\s*)?(\d{2,5})/i);
+      if (lis) {
+        const port = parseInt(lis[1], 10);
+        if (port >= PORT_RANGE.min && port <= PORT_RANGE.max && !BACKLOG_SET.has(port)) {
+          const key = `${relPath}:${port}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            mentions.push({
+              port,
+              filePath: relPath,
+              context: line.trim().slice(0, 80),
+              line: idx + 1,
+              role: 'server_listen',
+              isServerListen: true,
+            });
+          }
+        }
+      }
+
+      // 3. Env fallback
+      const envPort = line.match(/process\.env\.PORT\s*(?:\|\||\?\?)\s*(\d{2,5})/i);
+      if (envPort) {
+        const port = parseInt(envPort[1], 10);
+        if (port >= PORT_RANGE.min && port <= PORT_RANGE.max) {
+          const key = `${relPath}:${port}`;
+          if (!seen.has(key)) {
+            seen.add(key);
+            mentions.push({
+              port,
+              filePath: relPath,
+              context: line.trim().slice(0, 80),
+              line: idx + 1,
+              role: 'env_fallback',
+              isServerListen: true,
+            });
+          }
+        }
       }
     });
   }
 
-  // Detect port conflicts
-  const portsByFile = new Map<number, string[]>();
-  for (const m of mentions) {
-    if (!portsByFile.has(m.port)) portsByFile.set(m.port, []);
-    portsByFile.get(m.port)!.push(m.filePath);
-  }
+  // Detect genuine port conflicts between server listen ports and docker expose
+  const appListenPorts = mentions
+    .filter((m) => m.isServerListen && (m.role === 'server_listen' || m.role === 'env_fallback'))
+    .map((m) => m.port);
+  const dockerExposePorts = mentions
+    .filter((m) => m.role === 'docker_expose')
+    .map((m) => m.port);
 
-  // Multiple different ports across source/docker/readme = possible mismatch
-  const allPorts = Array.from(portsByFile.keys());
-  const appPorts = mentions.filter((m) => /\.(ts|js)$/.test(m.filePath)).map((m) => m.port);
-  const dockerPorts = mentions.filter((m) => /dockerfile|docker-compose/i.test(m.filePath)).map((m) => m.port);
-
-  const appPortSet = new Set(appPorts);
-  const dockerPortSet = new Set(dockerPorts);
+  const appPortSet = new Set(appListenPorts);
+  const dockerPortSet = new Set(dockerExposePorts);
   const mismatchedPorts = Array.from(appPortSet).filter((p) => dockerPortSet.size > 0 && !dockerPortSet.has(p));
 
-  if (mismatchedPorts.length > 0) {
+  if (mismatchedPorts.length > 0 && dockerPortSet.size > 0) {
     issues.push(issue(
-      'medium', 0.75, 'ports',
-      `Port mismatch between application and Docker`,
-      `Application code uses port(s) ${[...appPortSet].join(', ')} but Docker configuration uses port(s) ${[...dockerPortSet].join(', ')}.`,
-      `Align port configuration across application code, Docker, and environment variables.`,
-      { evidence: mismatchedPorts.map((p) => `Port ${p} in app but not in Docker`) },
+      'medium', 0.8, 'ports',
+      `Port mismatch between application server and Docker EXPOSE`,
+      `Application server binds to port(s) ${[...appPortSet].join(', ')} but Dockerfile exposes port(s) ${[...dockerPortSet].join(', ')}.`,
+      `Align port configuration across application code, Dockerfile, and environment variables.`,
+      {
+        evidence: mismatchedPorts.map((p) => `Server listen port ${p} not exposed in Dockerfile (${[...dockerPortSet].join(', ')})`),
+        whyDoctorDevBelievesThis: `Application code explicitly listens on port ${[...appPortSet].join(', ')} while Docker configuration uses ${[...dockerPortSet].join(', ')}.`,
+        whyUncertain: 'May be overridden dynamically at container runtime via environment variables.',
+      },
     ));
   }
 
@@ -216,7 +284,7 @@ export async function analyzePortsAndDocker(
       const exposeMatch = nonCommentContent.match(/^EXPOSE\s+(\d+)/m);
       if (exposeMatch) {
         const exposedPort = parseInt(exposeMatch[1], 10);
-        const appPort = appPorts[0];
+        const appPort = appListenPorts[0];
         if (appPort && exposedPort !== appPort) {
           issues.push(issue(
             'medium', 0.85, 'docker',

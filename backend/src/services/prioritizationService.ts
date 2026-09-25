@@ -122,23 +122,30 @@ export function calculateHealthScore(
   configIssues: ConfigIssue[],
   testProfile: TestProfile,
 ): HealthScore {
-  // Testing score: penalize for gaps, reward for actual coverage or evidence
-  const criticalGaps = testGaps.filter((g) => g.severity === 'critical').length;
-  const highGaps = testGaps.filter((g) => g.severity === 'high').length;
-  const mediumGaps = testGaps.filter((g) => g.severity === 'medium').length;
+  // Testing score: penalize for gaps weighted by confidence, reward for actual coverage or evidence
+  let gapPenalty = 0;
+  for (const gap of testGaps) {
+    const weight = gap.severity === 'critical' ? 10 : gap.severity === 'high' ? 6 : 2;
+    // Scale penalty directly by gap confidence
+    gapPenalty += weight * gap.confidence;
+  }
 
-  // Penalize confirmed gaps
-  const gapPenalty = criticalGaps * 10 + highGaps * 5 + mediumGaps * 2;
-  
   let baseScore = 0;
   if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
     baseScore = testProfile.coverage.percentage ?? 80;
   } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
-    baseScore = 70; // Sensible default for mature repos with tests but no report
+    // Mature repos with thousands of test cases receive evidence-proportional base
+    if (testProfile.totalTestCount > 100 || testProfile.totalTestFiles > 50) {
+      baseScore = 80;
+    } else if (testProfile.totalTestCount > 20 || testProfile.totalTestFiles > 10) {
+      baseScore = 70;
+    } else {
+      baseScore = 60;
+    }
   } else if (testProfile.totalTestFiles > 0) {
-    baseScore = 50; // Tests exist but we don't understand them well
+    baseScore = 50;
   } else {
-    baseScore = 20; // No tests found at all
+    baseScore = 15;
   }
 
   const testing = Math.max(0, Math.min(100, Math.round(baseScore - gapPenalty)));

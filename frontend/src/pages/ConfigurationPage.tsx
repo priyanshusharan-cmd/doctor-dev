@@ -9,6 +9,7 @@ export default function ConfigurationPage({ result }: Props) {
   const { configHealth } = result;
   const { issues, envVars, portMentions } = configHealth;
   const [showSecrets, setShowSecrets] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
 
   const bySeverity = {
     critical: issues.filter((i) => i.severity === 'critical').length,
@@ -17,10 +18,19 @@ export default function ConfigurationPage({ result }: Props) {
     low:      issues.filter((i) => i.severity === 'low').length,
   };
 
-  const missingVars = envVars.filter((v) => v.usedIn.length > 0 && v.definedIn.length === 0);
+  const missingVars = envVars.filter((v) =>
+    v.usedIn.length > 0 &&
+    v.definedIn.length === 0 &&
+    (v.category === 'APPLICATION' || v.category === 'DATABASE' || v.category === 'SERVICE' || !v.category)
+  );
   const secretVars = envVars.filter((v) => v.isSecret);
-  const uniquePorts = new Set(portMentions.map((p) => p.port));
+  const serverPorts = portMentions.filter((p) => p.isServerListen !== false);
+  const uniquePorts = new Set(serverPorts.map((p) => p.port));
   const portConflict = uniquePorts.size > 1;
+
+  const filteredEnvVars = selectedCategory === 'ALL'
+    ? envVars
+    : envVars.filter((v) => v.category === selectedCategory);
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -114,7 +124,7 @@ export default function ConfigurationPage({ result }: Props) {
             </h3>
             {portConflict && (
               <span className="text-xs text-yellow-400 bg-yellow-950/30 border border-yellow-800/40 px-2 py-0.5 rounded-full font-medium">
-                ⚠ Inconsistent ports
+                ⚠ Inconsistent server ports
               </span>
             )}
           </div>
@@ -124,6 +134,11 @@ export default function ConfigurationPage({ result }: Props) {
                 <span className={`text-sm font-bold font-mono w-16 flex-shrink-0 ${portConflict ? 'text-yellow-400' : 'text-blue-400'}`}>
                   :{p.port}
                 </span>
+                {p.role && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400 border border-gray-700/50 font-mono">
+                    {p.role}
+                  </span>
+                )}
                 <span className="text-xs text-gray-500 font-mono flex-1 truncate">{p.filePath}</span>
                 <span className="text-xs text-gray-700 truncate max-w-xs hidden lg:block">{p.context}</span>
               </div>
@@ -135,24 +150,42 @@ export default function ConfigurationPage({ result }: Props) {
       {/* Env var table */}
       {envVars.length > 0 && (
         <div>
-          <div className="flex items-center gap-2 mb-3">
-            <KeyRound className="w-4 h-4 text-orange-400" />
-            <h3 className="text-sm font-bold text-gray-200">
-              Environment Variables <span className="text-gray-600 font-normal">({envVars.length})</span>
-            </h3>
-            <button
-              onClick={() => setShowSecrets(!showSecrets)}
-              className="ml-auto flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-400 transition-colors"
-            >
-              {showSecrets ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              {showSecrets ? 'Hide secrets' : 'Show secret flags'}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+            <div className="flex items-center gap-2">
+              <KeyRound className="w-4 h-4 text-orange-400" />
+              <h3 className="text-sm font-bold text-gray-200">
+                Environment Variables <span className="text-gray-600 font-normal">({filteredEnvVars.length} of {envVars.length})</span>
+              </h3>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1 bg-gray-900 border border-gray-800 rounded-lg p-1 text-xs">
+                {['ALL', 'APPLICATION', 'DATABASE', 'SERVICE', 'OS_SHELL', 'NODE_RUNTIME', 'CI_CD'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedCategory(cat)}
+                    className={`px-2 py-0.5 rounded font-medium transition-colors ${
+                      selectedCategory === cat ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+              <button
+                onClick={() => setShowSecrets(!showSecrets)}
+                className="flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-400 transition-colors"
+              >
+                {showSecrets ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                {showSecrets ? 'Hide secrets' : 'Show secret flags'}
+              </button>
+            </div>
           </div>
           <div className="card rounded-2xl overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-gray-600 text-left border-b border-gray-800/60">
                   <th className="pb-3 font-semibold pr-4 uppercase tracking-wide">Name</th>
+                  <th className="pb-3 font-semibold pr-4 uppercase tracking-wide">Category</th>
                   <th className="pb-3 font-semibold pr-4 uppercase tracking-wide">Defined in</th>
                   <th className="pb-3 font-semibold pr-4 uppercase tracking-wide">Used in</th>
                   <th className="pb-3 font-semibold pr-4 uppercase tracking-wide">Default</th>
@@ -160,15 +193,22 @@ export default function ConfigurationPage({ result }: Props) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-800/40">
-                {envVars.map((v) => {
+                {filteredEnvVars.map((v) => {
                   const isMissing = missingVars.some((m) => m.name === v.name);
                   return (
                     <tr key={v.name} className={isMissing ? 'bg-red-950/10' : ''}>
                       <td className="py-2.5 pr-4 font-mono font-semibold text-gray-200">{v.name}</td>
+                      <td className="py-2.5 pr-4">
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-gray-800/80 text-gray-400 border border-gray-700/50">
+                          {v.category ?? 'APPLICATION'}
+                        </span>
+                      </td>
                       <td className="py-2.5 pr-4 text-gray-500">
                         {v.definedIn.length > 0
                           ? v.definedIn.join(', ')
-                          : <span className="text-red-400 font-semibold">not documented</span>}
+                          : isMissing
+                            ? <span className="text-red-400 font-semibold">not documented</span>
+                            : <span className="text-gray-600">system/runtime</span>}
                       </td>
                       <td className="py-2.5 pr-4 text-gray-500">{v.usedIn.length} file(s)</td>
                       <td className="py-2.5 pr-4">

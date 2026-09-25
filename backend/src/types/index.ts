@@ -29,13 +29,22 @@ export type Language = 'typescript' | 'javascript' | 'mixed' | 'python' | 'java'
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'maven' | 'gradle' | 'cargo' | 'go-modules' | 'bundler' | 'composer' | 'unknown';
 export type TestFramework = 'jest' | 'vitest' | 'mocha' | 'jasmine' | 'ava' | 'pytest' | 'unittest' | 'junit' | 'cargo-test' | 'go-test' | 'rspec' | 'phpunit' | 'unknown';
 
+export interface TestFrameworkEvidence {
+  framework: TestFramework | string;
+  confidence: number;
+  evidence: string[];
+  executionModel: 'cli_runner' | 'custom_script' | 'builtin_runner' | 'unknown';
+}
+
 export interface RepositoryProfile {
   name: string;
   description?: string;
   language: Language;
+  primaryEcosystem?: string;
   packageManager: PackageManager;
   framework?: string;
   testFrameworks: TestFramework[];
+  testFrameworkEvidence?: TestFrameworkEvidence;
   nodeVersion?: string;
   isMonorepo: boolean;
   workspaces: string[];
@@ -47,6 +56,9 @@ export interface RepositoryProfile {
   totalFiles: number;
   sourceFiles: string[];
   testFiles: string[];
+  fixtureFiles?: string[];
+  helperFiles?: string[];
+  benchmarkFiles?: string[];
   configFiles: string[];
   entryPoints: string[];
   hasTypes: boolean;
@@ -118,7 +130,13 @@ export interface TestSuite {
 export interface TestProfile {
   totalTestFiles: number;
   totalTestCount: number;
+  totalTestSuites?: number;
   suites: TestSuite[];
+  classifiedTestFiles?: {
+    filePath: string;
+    category: 'unit' | 'integration' | 'fixture' | 'helper' | 'benchmark' | 'example';
+    testCount: number;
+  }[];
   coveredFiles: Set<string>;
   detectedTestScript?: string;
   coverage: CoverageInfo;
@@ -183,6 +201,8 @@ export interface TestGap {
   evidence: string[];
   existingTests: string[];
   recommendedTests: string[];
+  whyDoctorDevBelievesThis?: string;
+  whyUncertain?: string;
 }
 
 // ─── Generated Test ───────────────────────────────────────────────────────────
@@ -247,10 +267,25 @@ export interface ConfigIssue {
   evidence: string[];
   recommendedFix: string;
   affectedFiles?: string[];
+  whyDoctorDevBelievesThis?: string;
+  whyUncertain?: string;
 }
+
+export type EnvVarCategory =
+  | 'APPLICATION'
+  | 'DATABASE'
+  | 'SERVICE'
+  | 'CI_CD'
+  | 'OS_SHELL'
+  | 'NODE_RUNTIME'
+  | 'TEST'
+  | 'BENCHMARK'
+  | 'TOOLING'
+  | 'UNKNOWN';
 
 export interface EnvVarInfo {
   name: string;
+  category?: EnvVarCategory;
   definedIn: string[];
   usedIn: string[];
   hasDefault: boolean;
@@ -258,11 +293,21 @@ export interface EnvVarInfo {
   isSecret: boolean;
 }
 
+export type PortRole =
+  | 'server_listen'
+  | 'client_dest'
+  | 'docker_expose'
+  | 'env_fallback'
+  | 'doc_reference'
+  | 'unknown';
+
 export interface PortMention {
   port: number;
   filePath: string;
   context: string;
   line: number;
+  role?: PortRole;
+  isServerListen?: boolean;
 }
 
 export interface ConfigHealth {

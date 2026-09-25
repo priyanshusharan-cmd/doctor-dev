@@ -19,8 +19,11 @@ export interface LanguageAdapter {
   analyzeTests(repoPath: string, testFiles: string[]): TestProfile;
 }
 
+import { JavaScriptAdapter } from './javascript';
+import { PythonAdapter } from './python';
+
 // Registry of all available language adapters
-const adapters: LanguageAdapter[] = [];
+const adapters: LanguageAdapter[] = [JavaScriptAdapter, PythonAdapter];
 
 export function registerAdapter(adapter: LanguageAdapter) {
   adapters.push(adapter);
@@ -29,3 +32,8 @@ export function registerAdapter(adapter: LanguageAdapter) {
 export function getAdapterFor(repoPath: string, sourceFiles: string[]): LanguageAdapter | undefined {
   return adapters.find((a) => a.canAnalyze(repoPath, sourceFiles));
 }
+
+export function getAllAdaptersFor(repoPath: string, sourceFiles: string[]): LanguageAdapter[] {
+  return adapters.filter((a) => a.canAnalyze(repoPath, sourceFiles));
+}
+
