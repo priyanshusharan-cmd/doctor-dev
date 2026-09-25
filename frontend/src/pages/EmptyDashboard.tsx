@@ -60,7 +60,6 @@ export default function EmptyDashboard() {
               <Zap className="w-3 h-3" />
               AI-Powered Analysis
             </span>
-            <span className="text-xs text-gray-600">IBM Bob 2.0 Hackathon</span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-black text-white mb-3 leading-tight">

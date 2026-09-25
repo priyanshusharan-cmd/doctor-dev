@@ -14,9 +14,10 @@ interface Props {
   onTabChange: (tab: ActiveTab) => void;
   hasResult: boolean;
   onHistoryClick: () => void;
+  onLogoClick: () => void;
 }
 
-export default function Header({ activeTab, onTabChange, hasResult, onHistoryClick }: Props) {
+export default function Header({ activeTab, onTabChange, hasResult, onHistoryClick, onLogoClick }: Props) {
   return (
     <header className="border-b border-gray-800/60 sticky top-0 z-40" style={{ background: 'rgba(8, 11, 18, 0.9)', backdropFilter: 'blur(20px)' }}>
       <div className="max-w-screen-xl mx-auto px-6">
@@ -24,22 +25,24 @@ export default function Header({ activeTab, onTabChange, hasResult, onHistoryCli
         <div className="flex items-center justify-between h-14">
           <div className="flex items-center gap-3">
             {/* Logo mark */}
-            <div className="relative w-8 h-8 flex-shrink-0">
-              <div className="absolute inset-0 rounded-lg bg-blue-600 opacity-20 blur-md" />
-              <div className="relative w-8 h-8 rounded-lg flex items-center justify-center"
-                style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', boxShadow: '0 0 12px rgba(37, 99, 235, 0.5)' }}>
-                <Activity className="w-4 h-4 text-white" strokeWidth={2.5} />
+            <button onClick={onLogoClick} className="flex items-center gap-3 hover:opacity-80 transition-opacity text-left">
+              <div className="relative w-8 h-8 flex-shrink-0">
+                <div className="absolute inset-0 rounded-lg bg-blue-600 opacity-20 blur-md" />
+                <div className="relative w-8 h-8 rounded-lg flex items-center justify-center"
+                  style={{ background: 'linear-gradient(135deg, #2563eb, #1d4ed8)', boxShadow: '0 0 12px rgba(37, 99, 235, 0.5)' }}>
+                  <Activity className="w-4 h-4 text-white" strokeWidth={2.5} />
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <span className="text-white font-bold text-base tracking-tight">
-                Doctor<span className="text-gradient-blue">Dev</span>
-              </span>
-              <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 font-medium mt-0.5">
-                <span className="w-1 h-1 rounded-full bg-gray-700" />
-                AI Software Health Checker
-              </span>
-            </div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-white font-bold text-base tracking-tight">
+                  Doctor<span className="text-gradient-blue">Dev</span>
+                </span>
+                <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 font-medium mt-0.5">
+                  <span className="w-1 h-1 rounded-full bg-gray-700" />
+                  AI Software Health Checker
+                </span>
+              </div>
+            </button>
           </div>
 
           <div className="flex items-center gap-3">
