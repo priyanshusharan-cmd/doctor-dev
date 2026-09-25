@@ -65,16 +65,38 @@ const IGNORE_DIRS = [
 
 /** Detect primary ecosystem from root files and language presence */
 export function detectPrimaryEcosystem(repoPath: string, language: Language): string {
+  // If package.json exists, ecosystem is always Node
   if (fileExists(path.join(repoPath, 'package.json'))) return 'node';
-  if (fileExists(path.join(repoPath, 'Cargo.toml'))) return 'rust';
-  if (fileExists(path.join(repoPath, 'go.mod'))) return 'go';
-  if (fileExists(path.join(repoPath, 'pom.xml')) || fileExists(path.join(repoPath, 'build.gradle'))) return 'java';
-  if (fileExists(path.join(repoPath, 'pyproject.toml')) || fileExists(path.join(repoPath, 'requirements.txt')) || fileExists(path.join(repoPath, 'Pipfile'))) return 'python';
-  if (fileExists(path.join(repoPath, 'composer.json'))) return 'php';
-  if (fileExists(path.join(repoPath, 'Gemfile'))) return 'ruby';
 
-  if (language === 'typescript' || language === 'javascript' || language === 'mixed') return 'node';
-  if (language === 'python') return 'python';
+  // Node runtime or JS/TS repository markers
+  if (
+    fileExists(path.join(repoPath, '.npmrc')) ||
+    fileExists(path.join(repoPath, 'node.gyp')) ||
+    fileExists(path.join(repoPath, 'common.gypi')) ||
+    language === 'typescript' ||
+    language === 'javascript' ||
+    language === 'mixed'
+  ) {
+    return 'node';
+  }
+
+  if (fileExists(path.join(repoPath, 'Cargo.toml')) && (language === 'rust' || language === 'unknown')) return 'rust';
+  if (fileExists(path.join(repoPath, 'go.mod')) && (language === 'go' || language === 'unknown')) return 'go';
+  if ((fileExists(path.join(repoPath, 'pom.xml')) || fileExists(path.join(repoPath, 'build.gradle'))) && (language === 'java' || language === 'unknown')) return 'java';
+  if (fileExists(path.join(repoPath, 'composer.json')) && (language === 'php' || language === 'unknown')) return 'php';
+  if (fileExists(path.join(repoPath, 'Gemfile')) && (language === 'ruby' || language === 'unknown')) return 'ruby';
+
+  // Python: Only classify as Python if language is python or python manifest exists and not C++/Node
+  if (
+    language === 'python' ||
+    ((fileExists(path.join(repoPath, 'pyproject.toml')) || fileExists(path.join(repoPath, 'requirements.txt')) || fileExists(path.join(repoPath, 'Pipfile'))) &&
+      language !== 'c++' &&
+      language !== 'rust' &&
+      language !== 'go')
+  ) {
+    return 'python';
+  }
+
   if (language === 'rust') return 'rust';
   if (language === 'go') return 'go';
   if (language === 'java') return 'java';
@@ -115,17 +137,28 @@ function detectLanguage(sourceFiles: string[]): Language {
   return maxLang;
 }
 
-/** Detect package manager from ecosystem and lockfiles. Never pick Poetry for Node.js! */
+/** Detect package manager from ecosystem, lockfiles, and package manifests. Never pick pip/poetry for Node! */
 function detectPackageManager(
   repoPath: string,
   primaryEcosystem: string,
   pkg?: { packageManager?: string },
+  language?: Language,
 ): PackageManager {
-  // If primary ecosystem is Node/JS, prioritize JS package managers strictly
-  if (primaryEcosystem === 'node' || fileExists(path.join(repoPath, 'package.json'))) {
+  // If primary ecosystem is Node or JS/TS files exist or Node markers exist, prioritize JS package managers strictly
+  const isNode =
+    primaryEcosystem === 'node' ||
+    fileExists(path.join(repoPath, 'package.json')) ||
+    fileExists(path.join(repoPath, '.npmrc')) ||
+    fileExists(path.join(repoPath, 'node.gyp')) ||
+    language === 'javascript' ||
+    language === 'typescript' ||
+    language === 'mixed';
+
+  if (isNode) {
     if (fileExists(path.join(repoPath, 'pnpm-lock.yaml'))) return 'pnpm';
     if (fileExists(path.join(repoPath, 'yarn.lock'))) return 'yarn';
     if (fileExists(path.join(repoPath, 'package-lock.json'))) return 'npm';
+    if (fileExists(path.join(repoPath, 'bun.lockb')) || fileExists(path.join(repoPath, 'bun.lock'))) return 'npm';
     if (pkg?.packageManager) {
       if (pkg.packageManager.startsWith('pnpm')) return 'pnpm';
       if (pkg.packageManager.startsWith('yarn')) return 'yarn';
@@ -144,8 +177,8 @@ function detectPackageManager(
   if (fileExists(path.join(repoPath, 'pom.xml'))) return 'maven';
   if (fileExists(path.join(repoPath, 'build.gradle'))) return 'gradle';
 
-  // Python
-  if (primaryEcosystem === 'python' || fileExists(path.join(repoPath, 'pyproject.toml')) || fileExists(path.join(repoPath, 'requirements.txt'))) {
+  // Python: strictly only if primary ecosystem is Python
+  if (primaryEcosystem === 'python') {
     if (fileExists(path.join(repoPath, 'poetry.lock'))) return 'poetry';
     const pyproject = readFileSafe(path.join(repoPath, 'pyproject.toml'));
     if (pyproject && pyproject.includes('[tool.poetry]')) return 'poetry';
@@ -197,8 +230,8 @@ function detectTestExecutionModel(
     executionModel = 'cli_runner';
     evidenceList.push(`Test script invokes Jest CLI: "${testScript}"`);
   } else if (testScriptLower.includes('node --test') || testScriptLower.includes('node test/')) {
-    detectedFramework = 'node-test' as unknown as TestFramework;
-    confidence = 0.9;
+    detectedFramework = 'node-test';
+    confidence = 0.95;
     executionModel = 'builtin_runner';
     evidenceList.push(`Test script invokes Node built-in test runner: "${testScript}"`);
   } else if (testScriptLower.includes('pytest')) {
@@ -206,9 +239,39 @@ function detectTestExecutionModel(
     confidence = 0.95;
     executionModel = 'cli_runner';
     evidenceList.push(`Test script invokes pytest: "${testScript}"`);
+  } else if (testScriptLower.includes('tools/test.py') || allScripts.some((s) => s.includes('tools/test.py'))) {
+    detectedFramework = 'node-test';
+    confidence = 0.95;
+    executionModel = 'custom_script';
+    evidenceList.push(`Test script invokes Node test harness runner: "${testScript}"`);
   }
 
-  // 2. Check config files if not already high confidence
+  // 2. Check repository directory & harness conventions
+  if (confidence < 0.9) {
+    const hasParallel = fs.existsSync(path.join(repoPath, 'test', 'parallel'));
+    const hasSequential = fs.existsSync(path.join(repoPath, 'test', 'sequential'));
+    const hasTestPy = fs.existsSync(path.join(repoPath, 'tools', 'test.py'));
+    const hasNodeGyp = fs.existsSync(path.join(repoPath, 'node.gyp'));
+
+    if ((hasParallel || hasSequential) && (hasTestPy || hasNodeGyp)) {
+      detectedFramework = 'node-test';
+      confidence = 0.95;
+      executionModel = 'builtin_runner';
+      evidenceList.push('Repository organizes test suites in test/parallel and test/sequential run via Node core test harness');
+    } else if (hasParallel || hasSequential) {
+      detectedFramework = 'node-test';
+      confidence = 0.9;
+      executionModel = 'builtin_runner';
+      evidenceList.push('Found Node test runner directory conventions (test/parallel, test/sequential)');
+    } else if (fs.existsSync(path.join(repoPath, 'conftest.py')) || fs.existsSync(path.join(repoPath, 'tests', 'conftest.py'))) {
+      detectedFramework = 'pytest';
+      confidence = 0.9;
+      executionModel = 'cli_runner';
+      evidenceList.push('Found pytest configuration fixture (conftest.py)');
+    }
+  }
+
+  // 3. Check config files if not already high confidence
   if (confidence < 0.9) {
     if (configNames.some((n) => n.startsWith('.mocharc') || n === 'mocha.opts')) {
       detectedFramework = 'mocha';
@@ -243,7 +306,7 @@ function detectTestExecutionModel(
     }
   }
 
-  // 3. Fallback to installed devDependencies
+  // 4. Fallback to installed devDependencies
   if (confidence < 0.8) {
     if (devDepKeys.includes('mocha') || devDepKeys.includes('@types/mocha')) {
       detectedFramework = 'mocha';
@@ -260,6 +323,29 @@ function detectTestExecutionModel(
       confidence = 0.75;
       executionModel = 'cli_runner';
       evidenceList.push('Jest installed in devDependencies');
+    }
+  }
+
+  // 5. Fallback to Makefile targets if present
+  if (confidence < 0.7) {
+    const makefile = readFileSafe(path.join(repoPath, 'Makefile')) || readFileSafe(path.join(repoPath, 'BSDmakefile'));
+    if (makefile) {
+      if (makefile.includes('tools/test.py') || makefile.includes('node --test')) {
+        detectedFramework = 'node-test';
+        confidence = 0.85;
+        executionModel = 'custom_script';
+        evidenceList.push('Makefile defines test targets invoking Node test harness');
+      } else if (makefile.includes('mocha')) {
+        detectedFramework = 'mocha';
+        confidence = 0.8;
+        executionModel = 'cli_runner';
+        evidenceList.push('Makefile defines test targets invoking Mocha');
+      } else if (makefile.includes('pytest')) {
+        detectedFramework = 'pytest';
+        confidence = 0.8;
+        executionModel = 'cli_runner';
+        evidenceList.push('Makefile defines test targets invoking pytest');
+      }
     }
   }
 
@@ -434,7 +520,7 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
   // ── 5. Derived attributes ──────────────────────────────────────────────────
   const language = detectLanguage(pureSourceFiles);
   const primaryEcosystem = detectPrimaryEcosystem(repoPath, language);
-  const packageManager = detectPackageManager(repoPath, primaryEcosystem, pkg ?? undefined);
+  const packageManager = detectPackageManager(repoPath, primaryEcosystem, pkg ?? undefined, language);
   const testModel = detectTestExecutionModel(repoPath, scripts, devDependencies, configFiles);
   const framework = detectFramework(dependencies, devDependencies);
   const isGitRepo = fileExists(path.join(repoPath, '.git'));

@@ -23,6 +23,7 @@ const TEST_FRAMEWORK_IMPORTS = {
     '@types/mocha': 'mocha',
     'jasmine': 'jasmine',
     'ava': 'ava',
+    'node:test': 'node-test',
 };
 function detectFrameworkFromImports(sourceFile) {
     for (const imp of sourceFile.getImportDeclarations()) {
@@ -178,7 +179,7 @@ function detectCoverage(repoPath) {
  * Analyse test files and build a TestProfile.
  * Uses fast text scanning across all test files plus AST on a sample for import mapping.
  */
-function analyzeTests(repoPath, testFiles) {
+function analyzeTests(repoPath, testFiles, repoFrameworkEvidence) {
     const suites = [];
     const coveredFiles = new Set();
     const coverageBase = detectCoverage(repoPath);
@@ -191,6 +192,7 @@ function analyzeTests(repoPath, testFiles) {
             suites,
             coveredFiles,
             coverage,
+            testFrameworkEvidence: repoFrameworkEvidence,
         };
     }
     let totalTestCount = 0;
@@ -238,13 +240,27 @@ function analyzeTests(repoPath, testFiles) {
     for (const sourceFile of project.getSourceFiles()) {
         const filePath = (0, security_1.relativePath)(repoPath, sourceFile.getFilePath());
         const text = sourceFile.getFullText();
-        const framework = detectFrameworkFromImports(sourceFile);
+        const directFramework = detectFrameworkFromImports(sourceFile);
+        const hasDirect = directFramework !== 'unknown';
+        const repoFw = repoFrameworkEvidence?.framework;
+        const framework = hasDirect
+            ? directFramework
+            : (repoFw && repoFw !== 'unknown' ? repoFw : 'unknown');
+        const inheritedFramework = !hasDirect && framework !== 'unknown';
         const testCount = countTestsInText(text, filePath);
         const describeBlocks = extractDescribeBlocks(text);
         const itBlocks = extractItBlocks(text);
         const importsUnder = extractTestImports(sourceFile, repoPath, filePath);
         importsUnder.forEach((f) => coveredFiles.add(f));
-        suites.push({ filePath, framework, testCount, describeBlocks, itBlocks, importsUnder });
+        suites.push({
+            filePath,
+            framework,
+            testCount,
+            describeBlocks,
+            itBlocks,
+            importsUnder,
+            inheritedFramework,
+        });
     }
     if (coverage.status === 'UNAVAILABLE' && testFiles.length > 0) {
         coverage = {
@@ -260,6 +276,7 @@ function analyzeTests(repoPath, testFiles) {
         suites,
         coveredFiles,
         coverage,
+        testFrameworkEvidence: repoFrameworkEvidence,
     };
 }
 // ─── Env var analysis ─────────────────────────────────────────────────────────
@@ -336,15 +353,35 @@ function categorizeEnvVar(name) {
         return 'SERVICE';
     }
     // 8. Tooling
-    if (upper.startsWith('NPM_') ||
+    if (upper === 'GIT' ||
+        upper.startsWith('GIT_') ||
+        upper === 'SHELLCHECK' ||
+        upper.startsWith('SHELLCHECK_') ||
+        upper === 'MAKE' ||
+        upper.startsWith('MAKE_') ||
+        upper === 'MAKEFLAGS' ||
+        upper === 'CC' ||
+        upper === 'CXX' ||
+        upper === 'CFLAGS' ||
+        upper === 'CXXFLAGS' ||
+        upper === 'LDFLAGS' ||
+        upper === 'LD' ||
+        upper === 'AR' ||
+        upper === 'AS' ||
+        upper.startsWith('NPM_') ||
         upper.startsWith('YARN_') ||
+        upper.startsWith('PNPM_') ||
+        upper.startsWith('BUN_') ||
         upper.startsWith('COREPACK_') ||
         upper.startsWith('DOCKER_') ||
+        upper.startsWith('PODMAN_') ||
+        upper.startsWith('COMPOSE_') ||
         upper === 'DEBUG' ||
         upper === 'VERBOSE' ||
         upper === 'FORCE_COLOR' ||
         upper === 'NO_COLOR' ||
-        upper === 'PORT') {
+        upper === 'PORT' ||
+        upper === 'HOST') {
         return 'TOOLING';
     }
     return 'APPLICATION';

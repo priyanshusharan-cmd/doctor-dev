@@ -47,18 +47,19 @@ export default function OverviewPage({ result, onTabChange }: Props) {
     !result.testMappings.find((m) => m.sourceFile === r.filePath && m.relatedTests.length > 0)
   ).length;
 
-  const covPct = testProfile.coverage.percentage ?? 0;
-  let covLabel = `${covPct}%`;
+  const hasNumericCov = testProfile.coverage.percentage !== undefined && testProfile.coverage.percentage !== null;
+  const covPct = hasNumericCov ? testProfile.coverage.percentage! : undefined;
+  let covLabel = hasNumericCov ? `${covPct}%` : 'Evidence-based';
   let covSub = '';
   let covColor = 'text-gray-400';
 
   if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
     covSub = 'Reported by test runner';
-    covColor = covPct >= 70 ? 'text-green-400' : covPct >= 40 ? 'text-yellow-400' : 'text-red-400';
+    covColor = (covPct ?? 0) >= 70 ? 'text-green-400' : (covPct ?? 0) >= 40 ? 'text-yellow-400' : 'text-red-400';
   } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
-    covLabel = 'Evidence-based';
-    covSub = 'Estimated from tests';
-    covColor = 'text-blue-400';
+    covLabel = hasNumericCov ? `${covPct}%` : 'Evidence-based';
+    covSub = hasNumericCov ? 'Estimated from tests' : 'No numeric % available';
+    covColor = 'text-purple-400';
   } else {
     covLabel = 'Unavailable';
     covSub = 'No coverage data';

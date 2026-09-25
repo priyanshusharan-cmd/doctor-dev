@@ -98,7 +98,7 @@ async function runPipeline(
 
     // ── 3. Test analysis ───────────────────────────────────────────────────
     setStatus(id, 'analyzing_tests', STATUS_LABELS.analyzing_tests);
-    const rawTestProfile = analyzeTests(repoPath, repositoryProfile.testFiles);
+    const rawTestProfile = analyzeTests(repoPath, repositoryProfile.testFiles, repositoryProfile.testFrameworkEvidence);
     const testScript = detectTestScript(repositoryProfile);
     const testProfile = {
       ...rawTestProfile,

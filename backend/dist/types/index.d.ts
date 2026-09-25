@@ -11,7 +11,7 @@ export interface Analysis {
 }
 export type Language = 'typescript' | 'javascript' | 'mixed' | 'python' | 'java' | 'go' | 'rust' | 'ruby' | 'php' | 'c++' | 'unknown';
 export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'maven' | 'gradle' | 'cargo' | 'go-modules' | 'bundler' | 'composer' | 'unknown';
-export type TestFramework = 'jest' | 'vitest' | 'mocha' | 'jasmine' | 'ava' | 'pytest' | 'unittest' | 'junit' | 'cargo-test' | 'go-test' | 'rspec' | 'phpunit' | 'unknown';
+export type TestFramework = 'jest' | 'vitest' | 'mocha' | 'jasmine' | 'ava' | 'node-test' | 'pytest' | 'unittest' | 'junit' | 'cargo-test' | 'go-test' | 'rspec' | 'phpunit' | 'unknown';
 export interface TestFrameworkEvidence {
     framework: TestFramework | string;
     confidence: number;
@@ -76,6 +76,7 @@ export interface TestSuite {
     describeBlocks: string[];
     itBlocks: string[];
     importsUnder: string[];
+    inheritedFramework?: boolean;
 }
 export interface TestProfile {
     totalTestFiles: number;
@@ -90,6 +91,7 @@ export interface TestProfile {
     coveredFiles: Set<string>;
     detectedTestScript?: string;
     coverage: CoverageInfo;
+    testFrameworkEvidence?: TestFrameworkEvidence;
 }
 export type CoverageStatus = 'DIRECTLY_TESTED' | 'INDIRECTLY_TESTED' | 'PARTIALLY_TESTED' | 'NOT_ENOUGH_EVIDENCE' | 'NOT_TESTED';
 export interface TestMapping {

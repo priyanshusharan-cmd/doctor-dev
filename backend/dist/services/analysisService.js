@@ -86,7 +86,7 @@ async function runPipeline(id, rawPath, isGitHub, opts) {
         }
         // ── 3. Test analysis ───────────────────────────────────────────────────
         (0, analysisStore_1.setStatus)(id, 'analyzing_tests', STATUS_LABELS.analyzing_tests);
-        const rawTestProfile = (0, configAnalyzer_1.analyzeTests)(repoPath, repositoryProfile.testFiles);
+        const rawTestProfile = (0, configAnalyzer_1.analyzeTests)(repoPath, repositoryProfile.testFiles, repositoryProfile.testFrameworkEvidence);
         const testScript = (0, testRunner_1.detectTestScript)(repositoryProfile);
         const testProfile = {
             ...rawTestProfile,

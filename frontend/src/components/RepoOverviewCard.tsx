@@ -63,7 +63,7 @@ export default function RepoOverviewCard({ meta }: Props) {
         </Row>
 
         <Row icon={<FlaskConical />} label="Test frameworks">
-          {meta.testFrameworks.length > 0 ? (
+          {meta.testFrameworks.length > 0 && meta.testFrameworks[0] !== 'unknown' ? (
             <div className="flex flex-wrap items-center gap-1.5">
               {meta.testFrameworks.map((f) => <Chip key={f} variant="purple">{f}</Chip>)}
               {meta.testFrameworkEvidence && meta.testFrameworkEvidence.confidence > 0 && (

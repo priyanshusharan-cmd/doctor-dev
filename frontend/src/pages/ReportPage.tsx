@@ -69,6 +69,7 @@ export default function ReportPage({ result }: Props) {
       `| Test Frameworks | ${meta.testFrameworks.join(', ') || 'None'} |`,
       `| Source Files | ${meta.sourceFiles.length} |`,
       `| Test Files | ${meta.testFiles.length} |`,
+      `| Coverage | ${testProfile.coverage.percentage !== undefined ? `${testProfile.coverage.percentage}%` : 'Evidence-based (No numeric percentage available)'} |`,
       ``,
       `---`,
       ``,

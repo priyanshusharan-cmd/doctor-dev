@@ -1,4 +1,4 @@
-import type { TestProfile, EnvVarInfo, EnvVarCategory, PortMention } from '../types';
+import type { TestProfile, TestFrameworkEvidence, EnvVarInfo, EnvVarCategory, PortMention } from '../types';
 /** Real coverage report parsing for lcov.info, coverage-summary.json, and coverage-final.json */
 export declare function detectCoverage(repoPath: string): {
     status: 'ACTUAL_COVERAGE' | 'UNAVAILABLE';
@@ -9,7 +9,7 @@ export declare function detectCoverage(repoPath: string): {
  * Analyse test files and build a TestProfile.
  * Uses fast text scanning across all test files plus AST on a sample for import mapping.
  */
-export declare function analyzeTests(repoPath: string, testFiles: string[]): TestProfile;
+export declare function analyzeTests(repoPath: string, testFiles: string[], repoFrameworkEvidence?: TestFrameworkEvidence): TestProfile;
 export declare function categorizeEnvVar(name: string): EnvVarCategory;
 export declare function analyzeEnvVars(repoPath: string, sourceFiles: string[]): Promise<EnvVarInfo[]>;
 /** Strip code comments so that numbers in comments don't create false port mentions */

@@ -15,25 +15,33 @@ export default function TestingPage({ result }: Props) {
   const [sortBy, setSortBy] = useState<SortBy>('severity');
   const [showGenerated, setShowGenerated] = useState(false);
 
-  const covPct = testProfile.coverage.percentage ?? 0;
+  const hasNumericCov = testProfile.coverage.percentage !== undefined && testProfile.coverage.percentage !== null;
+  const covPct = hasNumericCov ? testProfile.coverage.percentage! : undefined;
   const totalSrc = repositoryProfile.sourceFiles.length;
 
-  let covLabel = `${covPct}%`;
+  let covLabel = hasNumericCov ? `${covPct}%` : 'Percentage unavailable';
   let covSub = '';
   let covDetails = '';
 
   if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
     covSub = 'Reported by test runner';
-    covDetails = `Based on parsed coverage data from the repository.`;
+    covDetails = 'Based on parsed coverage data from the repository.';
   } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
-    covLabel = 'Evidence-based';
-    covSub = 'Estimated from tests';
-    covDetails = `Estimated ${covPct}% based on testing evidence.`;
+    covLabel = hasNumericCov ? `${covPct}%` : 'Percentage unavailable';
+    covSub = 'No numeric coverage available';
+    covDetails = hasNumericCov
+      ? `Estimated ${covPct}% based on testing evidence.`
+      : (testProfile.coverage.reason || 'Evaluated using structural test evidence, test suites, and AST mappings.');
   } else {
     covLabel = 'Unavailable';
     covSub = 'No coverage data';
     covDetails = testProfile.coverage.reason;
   }
+
+  const mappedFilesCount = result.testMappings.filter((m) => m.relatedTests.length > 0).length;
+  const integrationTestCount = testProfile.classifiedTestFiles
+    ? testProfile.classifiedTestFiles.filter((f) => f.category === 'integration').reduce((acc, f) => acc + f.testCount, 0)
+    : testProfile.suites.filter((s) => /integration|e2e|parallel|sequential/i.test(s.filePath)).reduce((acc, s) => acc + s.testCount, 0);
 
   const untestedRoutes = routes.filter((r) =>
     !result.testMappings.find((m) => m.sourceFile === r.filePath && m.relatedTests.length > 0)
@@ -52,17 +60,17 @@ export default function TestingPage({ result }: Props) {
     low:      testGaps.filter((g) => g.severity === 'low').length,
   };
 
-  const barColor = covPct >= 80 ? 'score-bar-green' : covPct >= 60 ? 'score-bar-blue' : covPct >= 40 ? 'score-bar-yellow' : covPct >= 20 ? 'score-bar-orange' : 'score-bar-red';
+  const barColor = (covPct ?? 0) >= 80 ? 'score-bar-green' : (covPct ?? 0) >= 60 ? 'score-bar-blue' : (covPct ?? 0) >= 40 ? 'score-bar-yellow' : (covPct ?? 0) >= 20 ? 'score-bar-orange' : 'score-bar-red';
 
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Metrics row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'Source files',  value: totalSrc,                      color: 'text-white'  },
-          { label: 'Test files',    value: testProfile.totalTestFiles,     color: 'text-purple-400' },
-          { label: 'Test cases',    value: testProfile.totalTestCount,     color: 'text-purple-300' },
-          { label: 'Gaps found',    value: testGaps.length,                color: testGaps.length > 0 ? 'text-orange-400' : 'text-green-400' },
+          { label: 'Source files',  value: totalSrc.toLocaleString(),                  color: 'text-white'  },
+          { label: 'Test files',    value: testProfile.totalTestFiles.toLocaleString(), color: 'text-purple-400' },
+          { label: 'Test cases',    value: testProfile.totalTestCount.toLocaleString(), color: 'text-purple-300' },
+          { label: 'Gaps found',    value: testGaps.length.toLocaleString(),            color: testGaps.length > 0 ? 'text-orange-400' : 'text-green-400' },
         ].map(({ label, value, color }) => (
           <div key={label} className="card rounded-2xl text-center">
             <p className={`text-3xl font-black tabular-nums ${color}`}>{value}</p>
@@ -71,7 +79,7 @@ export default function TestingPage({ result }: Props) {
         ))}
       </div>
 
-      {/* Coverage bar */}
+      {/* Coverage section */}
       <div className="card rounded-2xl">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2.5">
@@ -83,21 +91,96 @@ export default function TestingPage({ result }: Props) {
               <span className="text-xs text-gray-600 ml-2">({covSub})</span>
             </div>
           </div>
-          <span className="text-2xl font-black text-white font-mono">{covLabel}</span>
+          <span className={`font-black font-mono ${hasNumericCov ? 'text-2xl text-white' : 'text-base text-purple-400'}`}>
+            {covLabel}
+          </span>
         </div>
-        <div className="h-3 rounded-full bg-gray-800/80 overflow-hidden mb-2">
-          <div
-            className={`h-full rounded-full ${barColor}`}
-            style={{ width: `${covPct}%`, transition: 'width 1s ease-out' }}
-          />
-        </div>
-        <p className="text-xs text-gray-600">
+
+        {hasNumericCov ? (
+          <div className="h-3 rounded-full bg-gray-800/80 overflow-hidden mb-2">
+            <div
+              className={`h-full rounded-full ${barColor}`}
+              style={{ width: `${covPct}%`, transition: 'width 1s ease-out' }}
+            />
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 my-3 p-3 rounded-xl bg-gray-900/60 border border-gray-800/60">
+            <div>
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider block font-medium">Test Files</span>
+              <span className="text-sm font-bold font-mono text-purple-300">{testProfile.totalTestFiles.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider block font-medium">Detected Tests</span>
+              <span className="text-sm font-bold font-mono text-purple-300">{testProfile.totalTestCount.toLocaleString()}</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider block font-medium">Test Mapping</span>
+              <span className="text-sm font-bold font-mono text-blue-400">{mappedFilesCount.toLocaleString()} mapped</span>
+            </div>
+            <div>
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider block font-medium">Integration / System</span>
+              <span className="text-sm font-bold font-mono text-green-400">{integrationTestCount.toLocaleString()} tests</span>
+            </div>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-500">
           {covDetails}
           {testProfile.detectedTestScript && (
             <> Test script: <code className="text-gray-400 font-mono">{testProfile.detectedTestScript}</code></>
           )}
         </p>
       </div>
+
+      {/* Repository-level Test Framework & Execution Model Evidence */}
+      {repositoryProfile.testFrameworkEvidence && (
+        <div className="card rounded-2xl border border-purple-900/30 bg-purple-950/10 p-5 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <FlaskConical className="w-4 h-4 text-purple-400" />
+              <h3 className="text-sm font-bold text-gray-200">Repository Test Execution Model</h3>
+            </div>
+            <span className="text-xs font-mono px-2 py-0.5 rounded-md bg-purple-900/40 text-purple-300 border border-purple-700/40">
+              {Math.round(repositoryProfile.testFrameworkEvidence.confidence * 100)}% confidence
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+            <div className="bg-gray-900/60 p-2.5 rounded-xl border border-gray-800/60">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider block">Framework</span>
+              <span className="text-sm font-semibold font-mono text-purple-300">
+                {repositoryProfile.testFrameworkEvidence.framework}
+              </span>
+            </div>
+            <div className="bg-gray-900/60 p-2.5 rounded-xl border border-gray-800/60">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider block">Execution Model</span>
+              <span className="text-sm font-semibold font-mono text-gray-200 capitalize">
+                {repositoryProfile.testFrameworkEvidence.executionModel.replace('_', ' ')}
+              </span>
+            </div>
+            <div className="bg-gray-900/60 p-2.5 rounded-xl border border-gray-800/60 col-span-2 md:col-span-1">
+              <span className="text-[10px] text-gray-500 uppercase tracking-wider block">Confidence</span>
+              <span className="text-sm font-semibold font-mono text-green-400">
+                {Math.round(repositoryProfile.testFrameworkEvidence.confidence * 100)}%
+              </span>
+            </div>
+          </div>
+
+          {repositoryProfile.testFrameworkEvidence.evidence.length > 0 && (
+            <div className="pt-2 border-t border-gray-800/40">
+              <span className="text-xs font-medium text-gray-400 block mb-1">Evidence:</span>
+              <ul className="space-y-1">
+                {repositoryProfile.testFrameworkEvidence.evidence.map((ev, idx) => (
+                  <li key={idx} className="text-xs text-gray-400 flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5">•</span>
+                    <span>{ev}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Severity breakdown */}
       <div className="grid grid-cols-4 gap-3">
@@ -221,7 +304,15 @@ export default function TestingPage({ result }: Props) {
               <div key={s.filePath} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
                 <span className="text-xs font-mono text-gray-400 flex-1 truncate">{s.filePath}</span>
                 <span className="text-xs text-gray-600 flex-shrink-0">{s.testCount} test{s.testCount !== 1 ? 's' : ''}</span>
-                <span className="text-xs text-gray-700 flex-shrink-0 hidden sm:block">{s.framework}</span>
+                <span className="text-xs flex-shrink-0 hidden sm:block">
+                  {s.inheritedFramework ? (
+                    <span className="text-gray-500 font-mono text-[11px]" title="Inherited from repository test execution model">
+                      {s.framework} <span className="text-[10px] text-gray-600">(repo)</span>
+                    </span>
+                  ) : (
+                    <span className="text-purple-400 font-mono text-[11px]">{s.framework}</span>
+                  )}
+                </span>
               </div>
             ))}
           </div>
