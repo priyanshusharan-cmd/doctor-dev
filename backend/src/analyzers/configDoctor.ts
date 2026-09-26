@@ -115,7 +115,7 @@ export async function analyzeEnvVars(
     // Only report 'undocumented environment variable' when it appears to be application/configuration-specific.
     // OS, SHELL, NODE_RUNTIME, CI/CD, TEST, BENCHMARK, and single/two-letter variables are never reported.
     const isAppSpecific = category === 'APPLICATION' || category === 'DATABASE' || category === 'SERVICE';
-    const isRuntimeOrSystem = category === 'OS_SHELL' || category === 'NODE_RUNTIME' || category === 'CI_CD' || category === 'TEST' || category === 'BENCHMARK' || category === 'TOOLING' || name.length <= 2;
+    const isRuntimeOrSystem = category === 'OS_SHELL' || category === 'NODE_RUNTIME' || category === 'CI_CD' || category === 'TEST' || category === 'BENCHMARK' || category === 'TOOLING';
 
     if (usedIn.length > 0 && def.length === 0 && !defaults.has(name) && isAppSpecific && !isRuntimeOrSystem) {
       issues.push(issue(

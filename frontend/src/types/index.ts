@@ -21,7 +21,7 @@ export interface AnalysisPoll {
 }
 
 export type Language = 'typescript' | 'javascript' | 'mixed' | 'python' | 'java' | 'go' | 'rust' | 'ruby' | 'php' | 'c++' | 'unknown';
-export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'pip' | 'poetry' | 'maven' | 'gradle' | 'cargo' | 'go-modules' | 'bundler' | 'composer' | 'unknown';
+export type PackageManager = 'npm' | 'yarn' | 'pnpm' | 'bun' | 'pip' | 'poetry' | 'maven' | 'gradle' | 'cargo' | 'go-modules' | 'bundler' | 'composer' | 'unknown';
 export type TestFramework = 'jest' | 'vitest' | 'mocha' | 'jasmine' | 'ava' | 'node-test' | 'pytest' | 'unittest' | 'junit' | 'cargo-test' | 'go-test' | 'rspec' | 'phpunit' | 'unknown';
 
 export interface TestFrameworkEvidence {

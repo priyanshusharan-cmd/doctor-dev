@@ -155,14 +155,15 @@ function detectPackageManager(
     language === 'mixed';
 
   if (isNode) {
+    if (fileExists(path.join(repoPath, 'bun.lockb')) || fileExists(path.join(repoPath, 'bun.lock'))) return 'bun';
     if (fileExists(path.join(repoPath, 'pnpm-lock.yaml'))) return 'pnpm';
     if (fileExists(path.join(repoPath, 'yarn.lock'))) return 'yarn';
     if (fileExists(path.join(repoPath, 'package-lock.json'))) return 'npm';
-    if (fileExists(path.join(repoPath, 'bun.lockb')) || fileExists(path.join(repoPath, 'bun.lock'))) return 'npm';
     if (pkg?.packageManager) {
+      if (pkg.packageManager.startsWith('bun')) return 'bun';
       if (pkg.packageManager.startsWith('pnpm')) return 'pnpm';
       if (pkg.packageManager.startsWith('yarn')) return 'yarn';
-      if (pkg.packageManager.startsWith('bun') || pkg.packageManager.startsWith('npm')) return 'npm';
+      if (pkg.packageManager.startsWith('npm')) return 'npm';
     }
     return 'npm'; // Standard fallback for Node projects
   }

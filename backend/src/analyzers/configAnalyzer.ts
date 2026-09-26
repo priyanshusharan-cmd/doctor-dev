@@ -168,8 +168,7 @@ export function detectCoverage(repoPath: string): { status: 'ACTUAL_COVERAGE' | 
     if (fs.existsSync(path.join(repoPath, f))) {
       return {
         status: 'ACTUAL_COVERAGE',
-        percentage: 80,
-        reason: `Found actual coverage report at ${f}`,
+        reason: `Found actual coverage report at ${f} (percentage unavailable - parsing not supported for this format)`,
       };
     }
   }
@@ -326,12 +325,16 @@ export function categorizeEnvVar(name: string): EnvVarCategory {
   // 2. OS & Shell variables
   const OS_SHELL_SET = new Set([
     'PATH', 'TERM', 'SHELL', 'TMP', 'TEMP', 'TMPDIR', 'HOME', 'USER', 'USERNAME',
-    'LOGNAME', 'LANG', 'LC_ALL', 'PWD', 'OLDPWD', 'EDITOR', 'PAGER', 'SHLVL',
-    'HOSTNAME', 'DISPLAY', 'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME',
-    'XDG_CACHE_HOME', 'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'PS1',
-    'P', 'S', 'I', 'X', 'K', '_',
+    'LOGNAME', 'LANG', 'LC_ALL', 'LC_CTYPE', 'LC_MESSAGES', 'PWD', 'OLDPWD',
+    'EDITOR', 'VISUAL', 'PAGER', 'SHLVL', 'HOSTNAME', 'DISPLAY',
+    'XDG_RUNTIME_DIR', 'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME',
+    'SYSTEMROOT', 'WINDIR', 'COMSPEC', 'PATHEXT', 'PS1', 'PS2',
+    'UID', 'GID', 'EUID', 'PPID', 'COLUMNS', 'LINES', 'TZ', 'IFS',
+    'OPTARG', 'OPTIND', 'MAIL', 'SSH_AUTH_SOCK', 'SSH_AGENT_PID', 'SSH_CLIENT',
+    'SSH_CONNECTION', 'SSH_TTY', 'COLORTERM', 'TERM_PROGRAM', 'TERM_PROGRAM_VERSION',
+    'P', 'S', '_',
   ]);
-  if (OS_SHELL_SET.has(upper) || upper.length <= 2) return 'OS_SHELL';
+  if (OS_SHELL_SET.has(upper)) return 'OS_SHELL';
 
   // 3. Node Runtime
   if (upper.startsWith('NODE_') || upper.startsWith('UV_') || upper === 'V8_OPTIONS') {
@@ -359,6 +362,7 @@ export function categorizeEnvVar(name: string): EnvVarCategory {
 
   // 6. Database
   if (
+    upper === 'DB' ||
     upper.includes('DATABASE') ||
     upper.includes('DB_') ||
     upper.startsWith('POSTGRES_') ||

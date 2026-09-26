@@ -54,8 +54,11 @@ export default function OverviewPage({ result, onTabChange }: Props) {
   let covColor = 'text-gray-400';
 
   if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
-    covSub = 'Reported by test runner';
-    covColor = (covPct ?? 0) >= 70 ? 'text-green-400' : (covPct ?? 0) >= 40 ? 'text-yellow-400' : 'text-red-400';
+    covLabel = hasNumericCov ? `${covPct}%` : 'Report found';
+    covSub = hasNumericCov ? 'Reported by test runner' : 'Percentage unavailable';
+    covColor = hasNumericCov
+      ? ((covPct ?? 0) >= 70 ? 'text-green-400' : (covPct ?? 0) >= 40 ? 'text-yellow-400' : 'text-red-400')
+      : 'text-blue-400';
   } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
     covLabel = hasNumericCov ? `${covPct}%` : 'Evidence-based';
     covSub = hasNumericCov ? 'Estimated from tests' : 'No numeric % available';

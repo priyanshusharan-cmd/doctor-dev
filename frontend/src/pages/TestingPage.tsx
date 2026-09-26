@@ -24,8 +24,8 @@ export default function TestingPage({ result }: Props) {
   let covDetails = '';
 
   if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
-    covSub = 'Reported by test runner';
-    covDetails = 'Based on parsed coverage data from the repository.';
+    covSub = hasNumericCov ? 'Reported by test runner' : 'Coverage report found';
+    covDetails = testProfile.coverage.reason || 'Based on parsed coverage data from the repository.';
   } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
     covLabel = hasNumericCov ? `${covPct}%` : 'Percentage unavailable';
     covSub = 'No numeric coverage available';

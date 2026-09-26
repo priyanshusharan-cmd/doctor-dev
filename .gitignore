@@ -15,6 +15,9 @@ out
 .DS_Store
 *.pem
 .env
+*.env
+**/.env
+**/.env.*
 .env.local
 .env.development.local
 .env.test.local
