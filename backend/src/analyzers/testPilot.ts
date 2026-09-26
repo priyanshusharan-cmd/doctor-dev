@@ -100,7 +100,7 @@ export function buildTestMappings(
     if (testProfile.coverage.status === 'ACTUAL_COVERAGE' && unique.length === 0) {
       status = 'PARTIALLY_TESTED';
       confidence = 0.6;
-      evidence.push(`Relying on repository actual coverage report (${testProfile.coverage.percentage ?? 80}%).`);
+      evidence.push(`Relying on repository actual coverage report${testProfile.coverage.percentage !== undefined ? ` (${testProfile.coverage.percentage}%)` : ''}.`);
     }
 
     mappings.push({
@@ -226,15 +226,6 @@ export function findTestingGaps(
         : undefined;
       evidence.push(`Symbol: ${sym.name} (${sym.kind}) at ${sym.filePath}:${sym.lineStart}`);
       if (mapping) evidence.push(...mapping.evidence);
-    } else if (isUnknown) {
-      category = 'partial_test';
-      severity = 'low';
-      confidence = 0.35;
-      reason = `Testing evidence is insufficient for ${sym.name}. Tests exist in the repository, but direct coverage could not be verified via static AST.`;
-      whyBelieves = `No direct test file matching "${sym.filePath}" was found.`;
-      whyUncertain = `Repository has ${testProfile.totalTestFiles} test files and ${testProfile.totalTestCount} test cases. This file may be covered via runtime or integration suites.`;
-      evidence.push(`Symbol: ${sym.name} (${sym.kind}) at ${sym.filePath}:${sym.lineStart}`);
-      if (mapping) evidence.push(...mapping.evidence);
     } else if (hasDirectTests && ERROR_HANDLING_RE.test(content)) {
       const suite = testProfile.suites.find((s) => mapping!.relatedTests.includes(s.filePath));
       const allTestText = suite ? [...suite.itBlocks, ...suite.describeBlocks].join(' ').toLowerCase() : '';
@@ -281,8 +272,8 @@ export function findTestingGaps(
       severity,
       confidence,
       category,
-      title: `${category === 'no_test' ? 'No test for' : category === 'partial_test' ? 'Unconfirmed coverage for' : 'Incomplete tests for'}: ${sym.name}`,
-      description: `The ${sym.kind} \`${sym.name}\` in \`${sym.filePath}\` ${category === 'no_test' ? 'has no automated test coverage' : category === 'partial_test' ? 'could not be linked to test files via static analysis' : 'has tests but is missing important test scenarios'}.`,
+      title: `${category === 'no_test' ? 'No test for' : (category as GapCategory) === 'partial_test' ? 'Unconfirmed coverage for' : 'Incomplete tests for'}: ${sym.name}`,
+      description: `The ${sym.kind} \`${sym.name}\` in \`${sym.filePath}\` ${category === 'no_test' ? 'has no automated test coverage' : (category as GapCategory) === 'partial_test' ? 'could not be linked to test files via static analysis' : 'has tests but is missing important test scenarios'}.`,
       filePath: sym.filePath,
       symbolName: sym.name,
       lineStart: sym.lineStart,

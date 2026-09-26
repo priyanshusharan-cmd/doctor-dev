@@ -311,7 +311,71 @@ def test_login_failure():
     console.log('✓ Test 13 passed: Frameworks in devDependencies and test routes/ports are properly handled.');
   }
 
-  console.log('\nAll DoctorDev regression benchmarks passed successfully!');
+  // ─── Test 14: Comprehensive Axios-like Repository Validation ──────────────────
+  console.log('Test 14: Axios-like repository with large test suite and test servers');
+  {
+    const mockRepo = path.join(__dirname, 'mock_axios_comprehensive');
+    fs.mkdirSync(mockRepo, { recursive: true });
+    
+    // Package json with devDependencies
+    fs.writeFileSync(path.join(mockRepo, 'package.json'), JSON.stringify({
+      name: 'axios-clone',
+      devDependencies: { 'express': '^4.19.2', 'vitest': '^1.0.0' },
+      scripts: { test: 'vitest' }
+    }));
+
+    // Production code with 10 functions
+    fs.mkdirSync(path.join(mockRepo, 'lib', 'adapters'), { recursive: true });
+    const prodFns = Array.from({ length: 12 }, (_, i) => `export function prodWorker${i}() { return true; }`).join('\\n');
+    fs.writeFileSync(path.join(mockRepo, 'lib', 'adapters', 'http.js'), prodFns);
+
+    // Tests importing with relative paths
+    fs.mkdirSync(path.join(mockRepo, 'test', 'unit'), { recursive: true });
+    const testFns = Array.from({ length: 12 }, (_, i) => `it('tests worker ${i}', () => { prodWorker${i}(); });`).join('\\n');
+    fs.writeFileSync(path.join(mockRepo, 'test', 'unit', 'http.test.js'), `
+      import { ${Array.from({ length: 12 }, (_, i) => `prodWorker${i}`).join(', ')} } from '../../lib/adapters/http.js';
+      ${testFns}
+    `);
+
+    // Test-only express server
+    fs.mkdirSync(path.join(mockRepo, 'sandbox'), { recursive: true });
+    fs.writeFileSync(path.join(mockRepo, 'sandbox', 'server.js'), `
+      const express = require('express');
+      const app = express();
+      app.get('/test-route-sandbox', (req, res) => res.send('ok'));
+      app.listen(3000);
+    `);
+
+    const profile = await analyzeRepository(mockRepo);
+    assert.strictEqual(profile.framework, undefined, 'Express in devDependencies should not trigger framework detection');
+
+    const { analyzeCode } = require('../analyzers/codeAnalyzer');
+    const { symbols, routes } = analyzeCode(mockRepo, profile.sourceFiles);
+    
+    // Ensure the sandbox server route is NOT classified as production
+    const prodRoutes = routes.filter((r: any) => r.sourceType === 'production');
+    assert.strictEqual(prodRoutes.length, 0, 'Test/sandbox routes must not be marked as production routes');
+
+    const testProf = analyzeTests(mockRepo, profile.testFiles, profile.testFrameworkEvidence);
+    const { buildTestMappings, findTestingGaps } = require('../analyzers/testPilot');
+    const mappings = buildTestMappings(profile.sourceFiles, testProf);
+    
+    // Provide a mocked source contents map
+    const sourceContents = new Map();
+    for (const file of profile.sourceFiles) {
+      sourceContents.set(file, fs.readFileSync(path.join(mockRepo, file), 'utf8'));
+    }
+
+    const gaps = findTestingGaps(symbols, routes, mappings, testProf, sourceContents);
+    
+    const unmappedGaps = gaps.filter((g: any) => g.category === 'partial_test');
+    assert.strictEqual(unmappedGaps.length, 0, 'Must not report properly imported functions as partial_test gaps');
+
+    fs.rmSync(mockRepo, { recursive: true, force: true });
+    console.log('✓ Test 14 passed: Comprehensive false-positive prevention works for large repos.');
+  }
+
+  console.log('\\nAll DoctorDev regression benchmarks passed successfully!');
 }
 
 main().catch((err) => {

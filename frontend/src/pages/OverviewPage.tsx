@@ -155,7 +155,7 @@ export default function OverviewPage({ result, onTabChange }: Props) {
               <p className="text-xs text-gray-600 mt-0.5">test files</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-black text-white tabular-nums">{covPct}%</p>
+              <p className="text-2xl font-black text-white tabular-nums">{hasNumericCov ? `${covPct}%` : 'Unavailable'}</p>
               <p className="text-xs text-gray-600 mt-0.5">coverage</p>
             </div>
           </div>
