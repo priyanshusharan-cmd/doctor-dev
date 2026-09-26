@@ -13,7 +13,7 @@
 
 Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence · Designed for actionable results
 
-[Why Doctor Dev?](#-the-problem) • [Features](#-what-doctor-dev-finds) • [Screenshots](#-product-tour) • [Quick start](#-quick-start) • [Architecture](#-architecture) • [API](#-api-reference) • [IBM Bob](#-built-with-ibm-bob-20)
+[Why Doctor Dev?](#-the-problem) • [Features](#-what-doctor-dev-finds) • [Screenshots](#-product-tour) • [Presentation](#-hackathon-presentation) • [Quick start](#-quick-start) • [Architecture](#-architecture) • [API](#-api-reference) • [IBM Bob](#-built-with-ibm-bob-20)
 
 </div>
 
@@ -224,6 +224,20 @@ Each product screenshot is tucked into a collapsible panel to keep this long-for
 
 <!-- Replace this comment with: ![IBM Bob session](bob_sessions/session-001-architecture.png) -->
 </details>
+
+---
+
+## 🎤 Hackathon presentation
+
+The eight-slide presentation covers the developer-workflow problem, Doctor Dev's two analysis engines, the evidence-based pipeline, product experience, business value, IBM Bob usage, and the roadmap.
+
+<div align="center">
+
+### [⬇️ Download the Doctor Dev presentation deck](doctor-dev-ss/Doctor_Dev_Hackathon_Presentation_Deck.pptx)
+
+**Microsoft PowerPoint · 8 slides · Includes presenter notes**
+
+</div>
 
 ---
 
