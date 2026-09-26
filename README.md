@@ -1,366 +1,696 @@
-# Doctor Dev
+<div align="center">
 
-**Find what will break before your developers do.**
+# 🩺 Doctor Dev
 
-Doctor Dev is a developer-workflow validation platform that analyzes a real software repository and identifies two major classes of problems before they become expensive:
+### Find what will break before your developers do.
 
-- **TestPilot** — important application behavior that is not adequately covered by automated tests
-- **ConfigDoctor** — inconsistencies between application code, environment variables, Docker configuration, CI, and documentation
+**A repository health scanner that finds missing test coverage, configuration drift, unsafe runtime assumptions, and release risks—before they become expensive failures.**
 
-> Built for the **IBM Bob 2.0 Hackathon** using IBM Bob IDE as a core development tool.
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-18-61DAFB?style=for-the-badge&logo=react&logoColor=061a23)](https://react.dev/)
+[![Express](https://img.shields.io/badge/Express-4-111827?style=for-the-badge&logo=express&logoColor=white)](https://expressjs.com/)
+[![Vite](https://img.shields.io/badge/Vite-5-646CFF?style=for-the-badge&logo=vite&logoColor=white)](https://vite.dev/)
 
----
+Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence · Designed for actionable results
 
-## Problem
+[Why Doctor Dev?](#-the-problem) • [Features](#-what-doctor-dev-finds) • [Screenshots](#-product-tour) • [Quick start](#-quick-start) • [Architecture](#-architecture) • [API](#-api-reference) • [IBM Bob](#-built-with-ibm-bob-20)
 
-Developers ship code that breaks in ways they didn't anticipate — not because they aren't skilled, but because:
-
-- Critical functions never had a test written for them
-- An environment variable referenced in code isn't in `.env.example`
-- The Docker port doesn't match what the app binds to
-- CI runs on Node 16 but `engines` requires Node 18
-- The README says port 5000 but the app uses 3000
-
-These aren't bugs in application logic. They're gaps in **developer workflow hygiene** — and they're invisible until something breaks in production.
-
-**Doctor Dev makes them visible.**
+</div>
 
 ---
 
-## Solution
+> [!NOTE]
+> Doctor Dev does not return a vague AI review. It scans real files, builds structured evidence, assigns confidence, prioritizes risks, and produces concrete recommendations that a developer can act on.
 
-Doctor Dev takes a repository path, runs a full multi-stage analysis pipeline, and produces a structured health report with:
+## ✨ The idea in one minute
 
-- Exactly which functions are missing tests (and why it matters)
-- Exactly which configuration files are inconsistent (with a recommended fix)
-- A prioritized list of what to fix first
-- Generated test skeletons for the most critical gaps
-- A downloadable Markdown or JSON health report
+Modern repositories rarely fail because of one obvious syntax error. They fail in the gaps between systems:
 
----
+- a critical function exists, but no test proves its behavior;
+- code reads `JWT_SECRET`, but onboarding docs never mention it;
+- Docker exposes one port while the application binds to another;
+- CI uses a runtime version that conflicts with `package.json`;
+- a public API route has happy-path tests but no authorization test;
+- the README documents a command that no longer exists.
 
-## Architecture
+Each individual file can look correct while the repository as a whole is inconsistent.
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                          DOCTOR_DEV                           │
-│                                                             │
-│  ┌─────────────┐   REST API   ┌──────────────────────────┐ │
-│  │  Frontend   │◄────────────►│       Backend            │ │
-│  │             │              │                          │ │
-│  │  React      │              │  Analysis Pipeline:      │ │
-│  │  TypeScript │              │  1. Scan files           │ │
-│  │  Vite       │              │  2. AST code analysis    │ │
-│  │  Tailwind   │              │  3. Test mapping         │ │
-│  └─────────────┘              │  4. Gap detection        │ │
-│                               │  5. Config analysis      │ │
-│                               │  6. Prioritization       │ │
-│                               └──────────────────────────┘ │
-│                                        │                    │
-│                     ┌──────────────────┼──────────────────┐ │
-│                     ▼                  ▼                   │ │
-│              ┌─────────────┐   ┌─────────────────┐        │ │
-│              │  TESTPILOT  │   │  CONFIGDOCTOR   │        │ │
-│              │             │   │                 │        │ │
-│              │ Find missing│   │ Find config     │        │ │
-│              │ tests       │   │ problems        │        │ │
-│              └─────────────┘   └─────────────────┘        │ │
-│                     │                  │                   │ │
-│                     └──────────────────┘                   │ │
-│                              │                             │ │
-│                    ┌─────────────────┐                     │ │
-│                    │ Health Report   │                     │ │
-│                    │ Priority Risks  │                     │ │
-│                    │ Recommendations │                     │ │
-│                    └─────────────────┘                     │ │
-└─────────────────────────────────────────────────────────────┘
-```
+**Doctor Dev connects those signals.** Point it at a local directory or public GitHub repository and it runs a multi-stage analysis pipeline that produces:
 
-### Analysis Pipeline
-
-```
-Repository Path (local)
-         │
-         ▼
-   Path Validation & Security Check
-         │
-         ▼
-   File Scanner (fast-glob)
-   - Source files (.ts, .tsx, .js, .jsx)
-   - Test files (*.test.ts, *.spec.ts, etc.)
-   - Config files (package.json, Dockerfile, CI, .env.example)
-         │
-         ▼
-   Repository Profiler
-   - Language detection (TypeScript / JavaScript / mixed)
-   - Framework detection (Express, React, NestJS, etc.)
-   - Package manager (npm / yarn / pnpm)
-   - Test framework (Jest / Vitest / Mocha)
-         │
-         ▼
-   AST Code Analyzer (ts-morph)
-   - Extract functions, classes, methods
-   - Score symbol importance
-   - Detect API routes (router.get/post/put/delete)
-         │
-         ├─────────────────────────────────────────┐
-         ▼                                         ▼
-   TestPilot                                ConfigDoctor
-   - Map tests to source files              - Env var analysis
-   - Detect uncovered critical code         - Port mismatch detection
-   - Detect missing error tests             - Docker analysis
-   - Detect missing auth tests              - CI/CD analysis
-   - Generate test skeletons                - README analysis
-         │                                         │
-         └─────────────────────────────────────────┘
-                           │
-                           ▼
-                  Priority Finder + Health Scorer
-                  - Rank findings by impact
-                  - Calculate health score (0–100)
-                  - Assign grade (A–F)
-                           │
-                           ▼
-                     Structured JSON Result
-                  (stored in-memory per session)
-```
+1. a repository technology profile;
+2. evidence-based test health analysis;
+3. configuration and runtime consistency checks;
+4. prioritized findings with severity and confidence;
+5. a transparent health score and grade;
+6. optional test skeletons for high-impact gaps;
+7. downloadable Markdown and JSON reports.
 
 ---
 
-## Features
+## 🎯 The problem
 
-### TestPilot & Language Support
-- Supports analysis via **Language Adapters** for JavaScript/TypeScript, Python, Java, Go, Rust, C#, C++, and PHP.
-- Employs a **Layered Evidence Model** distinguishing between Actual Coverage (parsed), Evidence-Based (heuristic mapping), and Unavailable.
-- Classifies files as production, tests, examples, benchmarks, or fixtures to avoid penalizing sample code.
-- Detects important functions with no test coverage using exact names, import trees, and path heuristics.
-- Identifies missing error-path tests, edge-case tests, and auth tests for production code.
-- Detects API routes that have no corresponding tests without forcing brittle string matching.
-- Generates test skeleton files for the top critical/high gaps.
-- Confidence-scored findings (each finding explains *why* it was flagged).
+Developers lose time to repository-wide inconsistencies that ordinary tools inspect in isolation. Linters validate syntax. Test runners execute the tests that already exist. CI runs whatever it was configured to run. Documentation remains disconnected from code.
 
-### ConfigDoctor
-- Scans `process.env.NAME` usage vs `.env.example` declarations
-- Detects undocumented environment variables
-- Checks Dockerfile for `npm install` vs `npm ci`, root USER, EXPOSE port
-- Checks `docker-compose.yml` for port alignment and missing env vars
-- Inspects GitHub Actions workflows for Node version, install step, test step
-- Analyzes README for missing install/test instructions and port mismatches
-- **Never displays secret values — all sensitive data is flagged by name only**
+| Question | Why existing tools miss it |
+|---|---|
+| Which important behaviors have no meaningful test evidence? | A passing suite says nothing about code that was never exercised. |
+| Are environment variables used in code actually documented? | Code, templates, Docker, and docs are usually checked separately. |
+| Do runtime, Docker, CI, and documentation agree? | Each source can be valid by itself and contradictory as a system. |
+| What should the team fix first? | Raw warnings do not explain impact, confidence, or priority. |
+| Can a new contributor run the project successfully? | Onboarding failures emerge only after someone follows stale instructions. |
 
-### Dashboard
-| Tab | Contents |
-|-----|---------|
-| Overview | Health score (0–100, grade A–F), priority findings, key metrics |
-| Testing | Coverage bar, gap list with expandable evidence, route coverage, generated tests |
-| Configuration | Issue list with recommended fixes, env var table, port mentions |
-| Validation | Test run results and output, generated test code |
-| Report | Full summary, Markdown + JSON download |
+Doctor Dev treats the **repository as a connected system**, not a bag of unrelated files.
 
 ---
 
-## Tech Stack
+## 💡 The solution
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | React 18, TypeScript, Vite, Tailwind CSS, Lucide React |
-| Backend | Node.js, TypeScript, Express |
-| AST Analysis | ts-morph |
-| File Scanning | fast-glob |
-| Test Execution | execa (safe subprocess) |
-| Validation | zod |
-| Development | IBM Bob IDE |
+Doctor Dev combines two focused diagnostic engines:
+
+<table>
+<tr>
+<td width="50%" valign="top">
+
+### 🧪 TestPilot
+
+Finds important application behavior that lacks sufficient test evidence.
+
+- Maps test files to production files
+- Extracts symbols and API routes
+- Ranks code by importance
+- Detects missing happy, error, edge, and auth paths
+- Separates production code from fixtures and examples
+- Labels heuristic results honestly
+- Generates starter tests for critical gaps
+
+</td>
+<td width="50%" valign="top">
+
+### ⚙️ ConfigDoctor
+
+Finds drift across code, configuration, containers, CI, runtime, and documentation.
+
+- Compares environment variable usage and templates
+- Checks Docker build and runtime practices
+- Detects inconsistent port declarations
+- Reviews CI install, test, and Node-version setup
+- Verifies README setup guidance
+- Flags secrets by name without exposing values
+- Recommends a specific remediation
+
+</td>
+</tr>
+</table>
+
+Together they answer the practical question: **What is most likely to break, why does Doctor Dev believe that, and what should the developer do next?**
 
 ---
 
-## Installation
+## 🚀 What Doctor Dev finds
+
+### Repository understanding
+
+- Detects language, ecosystem, framework, package manager, test runner, entry points, and monorepo structure.
+- Recognizes npm, yarn, pnpm, Bun, pip, Poetry, Maven, Gradle, Cargo, Go modules, Bundler, and Composer metadata.
+- Separates source, test, fixture, helper, benchmark, example, generated, and build files.
+- Reads package scripts, dependency evidence, config files, Git metadata, and coverage artifacts.
+
+### Evidence-based testing analysis
+
+- JavaScript/TypeScript structural analysis with `ts-morph`.
+- Python symbol, route, and test discovery through a language adapter.
+- Importance scoring for exported functions, services, controllers, middleware, and route handlers.
+- Test-to-source mapping using names, imports, and path proximity.
+- Route coverage checks for common HTTP routing patterns.
+- Gap categories covering absent, partial, error, edge, and authorization tests.
+- Confidence scores and human-readable evidence for every meaningful finding.
+
+### Honest coverage states
+
+Doctor Dev avoids presenting a made-up percentage when numeric coverage is unavailable:
+
+| State | Meaning |
+|---|---|
+| **Actual Coverage** | Parsed from a supported artifact such as LCOV or `coverage-summary.json`. |
+| **Evidence Based** | Inferred from imports, naming, paths, and detected test cases. Explicitly labeled heuristic. |
+| **Unavailable** | There is not enough trustworthy evidence to claim coverage. |
+
+### Configuration diagnosis
+
+- Compares code-level environment variable usage with templates.
+- Filters common tooling and runtime variables to reduce false positives.
+- Never reports raw secret values.
+- Reviews Dockerfiles for deterministic installs, exposed ports, and non-root execution.
+- Compares Docker Compose variables and ports with application expectations.
+- Reviews CI configuration for runtime, installation, and test steps.
+- Finds README omissions, stale commands, and documented port conflicts.
+- Checks Node engine requirements and test script availability.
+
+### Prioritization and reporting
+
+- Produces testing, configuration, security, and overall scores.
+- Assigns grades from **A** to **F** and health states of healthy, needs attention, or critical.
+- Groups related issues into a focused priority list.
+- Provides evidence, reasoning, recommended action, and estimated impact.
+- Exports the result as Markdown or structured JSON.
+
+---
+
+## 📸 Product tour
+
+The sections below are intentionally collapsible. Replace each placeholder with a real screenshot before submission while keeping the same paths for a clean GitHub presentation.
+
+<details>
+<summary><strong>📸 Screenshot 01 — Repository input and analysis options</strong></summary>
+<br>
+
+> **Screenshot placeholder:** `docs/assets/screenshots/01-repository-input.png`<br>
+> Show the GitHub/local path input, test generation toggle, run-tests toggle, and Try Demo action.
+
+<!-- Replace this comment with: ![Repository input](docs/assets/screenshots/01-repository-input.png) -->
+</details>
+
+<details>
+<summary><strong>📸 Screenshot 02 — Live analysis pipeline</strong></summary>
+<br>
+
+> **Screenshot placeholder:** `docs/assets/screenshots/02-analysis-progress.png`<br>
+> Capture scanning, code analysis, test mapping, configuration analysis, and prioritization.
+
+<!-- Replace this comment with: ![Analysis progress](docs/assets/screenshots/02-analysis-progress.png) -->
+</details>
+
+<details>
+<summary><strong>📸 Screenshot 03 — Health overview</strong></summary>
+<br>
+
+> **Screenshot placeholder:** `docs/assets/screenshots/03-health-overview.png`<br>
+> Capture the final score, grade, repository profile, and highest-priority findings.
+
+<!-- Replace this comment with: ![Health overview](docs/assets/screenshots/03-health-overview.png) -->
+</details>
+
+<details>
+<summary><strong>📸 Screenshot 04 — TestPilot evidence</strong></summary>
+<br>
+
+> **Screenshot placeholder:** `docs/assets/screenshots/04-testpilot-findings.png`<br>
+> Expand a gap so reviewers can see confidence, evidence, reason, and recommended tests.
+
+<!-- Replace this comment with: ![TestPilot findings](docs/assets/screenshots/04-testpilot-findings.png) -->
+</details>
+
+<details>
+<summary><strong>📸 Screenshot 05 — ConfigDoctor findings</strong></summary>
+<br>
+
+> **Screenshot placeholder:** `docs/assets/screenshots/05-configdoctor-findings.png`<br>
+> Show an environment, Docker, CI, or port mismatch with its remediation.
+
+<!-- Replace this comment with: ![ConfigDoctor findings](docs/assets/screenshots/05-configdoctor-findings.png) -->
+</details>
+
+<details>
+<summary><strong>📸 Screenshot 06 — Generated tests and validation</strong></summary>
+<br>
+
+> **Screenshot placeholder:** `docs/assets/screenshots/06-validation.png`<br>
+> Show generated test skeletons or controlled test execution results.
+
+<!-- Replace this comment with: ![Validation](docs/assets/screenshots/06-validation.png) -->
+</details>
+
+<details>
+<summary><strong>📸 Screenshot 07 — Final report</strong></summary>
+<br>
+
+> **Screenshot placeholder:** `docs/assets/screenshots/07-final-report.png`<br>
+> Capture the report summary and Markdown, JSON, and print/PDF actions.
+
+<!-- Replace this comment with: ![Final report](docs/assets/screenshots/07-final-report.png) -->
+</details>
+
+<details>
+<summary><strong>🤖 Screenshot 08 — IBM Bob task session evidence</strong></summary>
+<br>
+
+> **Screenshot placeholder:** `bob_sessions/session-001-architecture.png`<br>
+> Use a real IBM Bob task summary screenshot. Never substitute fabricated evidence.
+
+<!-- Replace this comment with: ![IBM Bob session](bob_sessions/session-001-architecture.png) -->
+</details>
+
+---
+
+## 🎬 Demo scenario
+
+The included [`demo-repository/`](demo-repository/) is a deliberately imperfect TypeScript rideshare API. It makes Doctor Dev's value visible in a short demonstration without hardcoding analysis results.
+
+### Deliberate test risks
+
+- Ride cancellation lacks important state-transition and authorization cases.
+- Fare calculation lacks zero, negative-distance, and boundary tests.
+- Peak-hour logic lacks weekend and off-peak coverage.
+- Payment handling lacks idempotency and failure-path coverage.
+- Ride-history access lacks a meaningful authorization test.
+
+### Deliberate configuration risks
+
+- Docker and application ports disagree.
+- Docker Compose omits a required secret variable.
+- CI uses a Node version that conflicts with the engine requirement.
+- CI does not execute the test suite.
+- README runtime instructions contain stale port and command information.
+
+> [!IMPORTANT]
+> These results are not injected into the product. Doctor Dev discovers them through the same pipeline used for every repository.
+
+### Suggested three-minute demo
+
+1. Select **Try Demo**.
+2. Show the live analysis stages.
+3. Reveal the health score and highest-priority finding.
+4. Expand one TestPilot card and explain its evidence.
+5. Expand one ConfigDoctor card and show the cross-file inconsistency.
+6. Open Validation to show a generated test skeleton.
+7. Download the Markdown report.
+
+---
+
+## ⚡ Quick start
+
+### Prerequisites
+
+- Node.js 18 or newer
+- npm 9 or newer
+- Git for public GitHub repository analysis
+
+### 1. Clone
 
 ```bash
-# 1. Clone the repository
-git clone <repo-url>
+git clone https://github.com/priyanshusharan-cmd/doctor-dev.git
 cd doctor-dev
+```
 
-# 2. Install all dependencies
+### 2. Install
+
+```bash
+npm run install:all
+```
+
+Equivalent manual installation:
+
+```bash
 npm install
 npm install --prefix backend
 npm install --prefix frontend
+```
 
-# 3. Configure the backend
+### 3. Configure
+
+```bash
 cp backend/.env.example backend/.env
-# Edit backend/.env if needed (PORT defaults to 3001)
+```
+
+```dotenv
+PORT=3001
+FRONTEND_URL=http://localhost:5173
+```
+
+To analyze local repositories outside the Doctor Dev directory or system temporary directory, configure explicit allowed roots:
+
+```dotenv
+DOCTOR_DEV_ALLOWED_ROOTS=/path/to/projects,/another/approved/root
+```
+
+### 4. Run
+
+```bash
+npm run dev
+```
+
+| Service | URL |
+|---|---|
+| Frontend | `http://localhost:5173` |
+| Backend | `http://localhost:3001` |
+| Health endpoint | `http://localhost:3001/api/health` |
+
+### 5. Analyze
+
+- Paste a public GitHub URL.
+- Enter an allowed local repository path.
+- Or choose **Try Demo**.
+
+---
+
+## 🧭 User workflow
+
+```mermaid
+flowchart LR
+    A[Local path or public GitHub URL] --> B[Secure ingestion]
+    B --> C[Repository understanding]
+    C --> D[TestPilot]
+    C --> E[ConfigDoctor]
+    D --> F[Risk prioritization]
+    E --> F
+    F --> G[Health score]
+    G --> H[Actionable report]
+    H --> I[Fix, validate, repeat]
+```
+
+1. **Choose a repository.** Use an approved local path, full GitHub URL, or `owner/repository` shorthand.
+2. **Choose options.** Generate test suggestions and optionally run a detected safe local test script.
+3. **Watch the pipeline.** The UI reports each asynchronous stage.
+4. **Inspect evidence.** Expand findings to understand why they exist.
+5. **Prioritize work.** Begin with high-impact, high-confidence risks.
+6. **Export results.** Download Markdown or JSON for review or planning.
+
+---
+
+## 🏗️ Architecture
+
+```mermaid
+flowchart TB
+    UI[React + TypeScript dashboard]
+    API[Express REST API]
+    STORE[In-memory analysis store]
+    INGEST[Path validation / GitHub clone]
+    PROFILE[Repository profiler]
+    AST[Language adapters + AST analysis]
+    TEST[TestPilot]
+    CONFIG[ConfigDoctor]
+    SCORE[Prioritization + health scoring]
+    RUNNER[Controlled test runner]
+    REPORT[Markdown / JSON report]
+
+    UI <-->|Typed JSON + polling| API
+    API --> STORE
+    API --> INGEST
+    INGEST --> PROFILE
+    PROFILE --> AST
+    AST --> TEST
+    PROFILE --> CONFIG
+    TEST --> SCORE
+    CONFIG --> SCORE
+    PROFILE -. optional .-> RUNNER
+    SCORE --> STORE
+    RUNNER --> STORE
+    STORE --> REPORT
+```
+
+### Pipeline states
+
+```text
+pending
+   └── scanning
+         └── analyzing_code
+               └── analyzing_tests
+                     └── analyzing_config
+                           └── prioritizing
+                                 └── complete
+```
+
+| Stage | What happens |
+|---|---|
+| Secure ingestion | Validates an allowed local path or shallow-clones a public repository without a shell. |
+| Repository scan | Finds and classifies source, test, configuration, fixture, example, and benchmark files. |
+| Code analysis | Extracts symbols, routes, importance signals, and source classifications. |
+| Test analysis | Detects runners, counts tests, maps evidence, and reads supported coverage artifacts. |
+| Config analysis | Cross-checks variables, ports, containers, CI, docs, and runtime metadata. |
+| Prioritization | Converts gaps and issues into ranked findings and component scores. |
+| Reporting | Stores structured results for the dashboard and exports. |
+
+### Backend boundaries
+
+```text
+backend/src/
+├── routes/          Express route definitions
+├── controllers/     Validation and HTTP orchestration
+├── services/        Pipeline, GitHub ingestion, prioritization
+├── analyzers/
+│   ├── languages/   JavaScript/TypeScript and Python adapters
+│   ├── repositoryAnalyzer.ts
+│   ├── codeAnalyzer.ts
+│   ├── testPilot.ts
+│   └── configDoctor.ts
+├── runners/         Controlled test execution
+├── models/          In-memory analysis store
+├── types/           Shared domain model
+└── utils/           Security and filesystem helpers
+```
+
+### Frontend boundaries
+
+```text
+frontend/src/
+├── api/             Typed REST client
+├── components/      Cards, navigation, progress, and inputs
+├── pages/           Overview, Testing, Configuration, Validation, Report
+├── lib/             Pure presentation helpers
+└── types/           Frontend result types
 ```
 
 ---
 
-## Usage
+## 🧰 Technology stack
 
-### Development
+| Area | Technology | Purpose |
+|---|---|---|
+| UI | React 18 + TypeScript | Strict component-based dashboard |
+| Tooling | Vite 5 | Fast development and optimized builds |
+| Styling | Tailwind CSS | Responsive utility-first design |
+| Icons | Lucide React | Consistent visual language |
+| Charts | Recharts | Health and coverage visualization |
+| API | Express + TypeScript | Typed analysis endpoints |
+| Validation | Zod | Runtime request validation |
+| AST | ts-morph | Structural JavaScript/TypeScript analysis |
+| Discovery | fast-glob | Repository file classification |
+| Processes | execa | Argument-based Git and controlled test execution |
+| Development | IBM Bob 2.0 | Architecture, implementation, review, debugging |
+
+---
+
+## 🔐 Security model
+
+Doctor Dev analyzes repositories that may not be trustworthy, so safety is a product constraint.
+
+### Secret handling
+
+- Variable **names** may be reported; their values are never returned.
+- Sensitive names such as `API_KEY`, `SECRET`, `TOKEN`, `PASSWORD`, `PRIVATE_KEY`, `CREDENTIAL`, `AUTH`, and `ACCESS_KEY` are flagged case-insensitively.
+- Reports, logs, and UI output avoid secret-value exposure.
+
+### Filesystem safety
+
+- Paths are normalized, resolved through real paths, and checked against approved roots.
+- Null bytes, missing paths, non-directories, traversal, and symlink escapes are rejected.
+- Analysis is read-only.
+- Individual file reads are capped to avoid loading unexpectedly large content.
+
+### Process safety
+
+- Public repositories are cloned with argument-based execution, not shell interpolation.
+- Clones are shallow, time-limited, isolated in managed temporary directories, and removed afterward.
+- Test execution is opt-in and local-only.
+- Only recognized direct test-runner commands are accepted.
+- Shell operators, substitution, redirection, compound commands, arbitrary npm scripts, and unapproved `npx` packages are rejected.
+
+> [!WARNING]
+> Running a repository's tests still executes that repository's test code. Enable **Run tests** only for local repositories you trust. Static analysis remains read-only.
+
+---
+
+## 🔌 API reference
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `GET` | `/api/health` | Backend health and version information |
+| `POST` | `/api/analyze` | Start an asynchronous repository analysis |
+| `GET` | `/api/analysis/:analysisId` | Read progress, error, or completed results |
+| `GET` | `/api/analyses` | List analyses in the current server process |
+
+### Start an analysis
 
 ```bash
-# Start both frontend and backend
-npm run dev
-
-# Backend only
-npm run dev --prefix backend
-
-# Frontend only
-npm run dev --prefix frontend
+curl --request POST http://localhost:3001/api/analyze \
+  --header 'Content-Type: application/json' \
+  --data '{
+    "repositoryPath": "./demo-repository",
+    "runTests": false,
+    "generateTests": true
+  }'
 ```
 
-- **Frontend:** http://localhost:5173
-- **Backend:** http://localhost:3001
-- **Health check:** http://localhost:3001/api/health
+Response:
 
-### Analyze a repository
-
-**Via UI:**
-1. Open http://localhost:5173
-2. Enter an absolute path to any Node.js/TypeScript project
-3. Click **Analyze Repository**
-
-**Via API:**
-```bash
-curl -X POST http://localhost:3001/api/analyze \
-  -H 'Content-Type: application/json' \
-  -d '{"repositoryPath": "/path/to/your/project", "generateTests": true}'
+```json
+{
+  "analysisId": "8ad32bb4-1fd5-4dc9-bfde-000000000000",
+  "status": "pending"
+}
 ```
 
-**Try the demo repository:**
+### Poll an analysis
+
 ```bash
-curl -X POST http://localhost:3001/api/analyze \
-  -H 'Content-Type: application/json' \
-  -d '{"repositoryPath": "demo-repository", "generateTests": true}'
+curl http://localhost:3001/api/analysis/8ad32bb4-1fd5-4dc9-bfde-000000000000
 ```
 
-Or click **Try Demo Repository** in the UI.
+```json
+{
+  "id": "8ad32bb4-1fd5-4dc9-bfde-000000000000",
+  "status": "analyzing_tests",
+  "statusLabel": "Mapping test coverage",
+  "repositoryPath": "/approved/path/to/repository",
+  "createdAt": "2026-09-27T00:00:00.000Z"
+}
+```
 
-### Build for production
+Completed responses include the profile, symbols, routes, tests, mappings, gaps, generated tests, configuration health, priority findings, score, optional run result, and scan timestamp.
+
+---
+
+## ⌨️ Commands
+
+| Command | Purpose |
+|---|---|
+| `npm run dev` | Start backend and frontend together |
+| `npm run build` | Compile the backend and build the frontend |
+| `npm run typecheck` | Run strict TypeScript checks |
+| `npm test` | Run backend regression benchmarks |
+| `npm run lint` | Run configured package lint checks |
+| `npm run install:all` | Install all workspace dependencies |
+
+---
+
+## 🧪 Quality and validation
+
+The regression suite covers ecosystem classification, variable semantics, port filtering, Python discovery, score calibration, coverage-state handling, framework propagation, package manager detection, tooling-variable filtering, non-production route filtering, large-repository false-positive prevention, traversal protection, allowed path handling, and test-command injection protection.
+
+Before submitting a change:
 
 ```bash
+npm test
+npm run typecheck
+npm run build
+```
+
+Engineering principles:
+
+- strict TypeScript with no production `any`;
+- structured JSON instead of opaque prose;
+- evidence attached to non-trivial findings;
+- no hardcoded demo results;
+- read-only analysis;
+- honest confidence and heuristic labels;
+- a runnable application at every phase gate.
+
+---
+
+## 🤖 Built with IBM Bob 2.0
+
+Doctor Dev was developed with **IBM Bob 2.0 as a senior pair-programming partner**, directly supporting the developer workflow that the product improves.
+
+IBM Bob contributed to:
+
+- the TestPilot and ConfigDoctor architecture;
+- backend boundaries and the shared type model;
+- repository discovery and AST analysis;
+- evidence-based test mapping and health scoring;
+- mature-repository false-positive debugging;
+- the React dashboard and complete UI states;
+- path, secret, Git, and test-execution security;
+- the demo scenario and technical documentation;
+- strict TypeScript and regression review.
+
+The detailed development narrative is in [`docs/bob-usage.md`](docs/bob-usage.md). Real task-session screenshots and exports belong in [`bob_sessions/`](bob_sessions/); the project explicitly prohibits fabricated evidence.
+
+### Why IBM Bob mattered
+
+The challenge asks builders to improve a developer workflow with repository-aware AI. Bob's repository context made it possible to reason across frontend state, backend types, analyzers, security, tests, and documentation as one system. That connected-repository philosophy became the foundation of Doctor Dev.
+
+---
+
+## 🗂️ Project structure
+
+```text
+doctor-dev/
+├── frontend/                 React dashboard
+├── backend/                  Express analysis API
+├── demo-repository/          Deliberately imperfect rideshare API
+├── docs/
+│   ├── architecture.md       Technical architecture
+│   ├── benchmark.md          Benchmark notes
+│   └── bob-usage.md          IBM Bob development record
+├── bob_sessions/             Real IBM Bob evidence store
+├── AGENTS.md                 Engineering conventions
+├── DOCTOR_DEV_STATUS.md      Phase tracking
+└── README.md                 Project overview
+```
+
+---
+
+## 🗺️ Roadmap
+
+- [x] Repository profiling and technology detection
+- [x] JavaScript/TypeScript structural analysis
+- [x] Python language adapter
+- [x] Evidence-based test mapping
+- [x] ConfigDoctor cross-file checks
+- [x] Health scoring and priority findings
+- [x] Public GitHub repository ingestion
+- [x] Controlled local test execution
+- [x] Markdown and JSON export
+- [ ] First-class Java, Go, Rust, C++, C#, PHP, and Ruby adapters
+- [ ] Persistent analysis history
+- [ ] GitHub App and pull-request annotations
+- [ ] Organization policies and baselines
+- [ ] SARIF export and CI quality gates
+
+---
+
+## ⚠️ Current limitations
+
+- Deep analysis is strongest for JavaScript/TypeScript, with an initial Python adapter. Other ecosystems may be profiled without equivalent symbol-level analysis.
+- Evidence-based coverage is heuristic unless a supported coverage artifact exists.
+- Dynamic imports, generated routes, metaprogramming, and custom harnesses can reduce confidence.
+- Analysis history is in memory and resets with the backend.
+- Public GitHub repositories are supported; private authentication is not implemented.
+- Local paths must be inside configured analysis roots.
+- Generated tests are starter skeletons and require developer review.
+
+These constraints are visible because trustworthy tooling should distinguish evidence from inference.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome. Keep changes aligned with [`AGENTS.md`](AGENTS.md):
+
+1. Keep TypeScript strict and avoid `any`.
+2. Add a regression test for analyzer behavior.
+3. Preserve read-only repository analysis.
+4. Never expose secret values.
+5. Keep routes thin and logic in services or analyzers.
+6. Run all verification commands before opening a pull request.
+
+```bash
+git checkout -b feature/your-improvement
+npm test
+npm run typecheck
 npm run build
 ```
 
 ---
 
-## Demo
+<div align="center">
 
-The `demo-repository/` directory contains a realistic Node.js/TypeScript rideshare API with:
+### 🩺 Doctor Dev
 
-**Deliberate testing gaps:**
-- `cancelRide()` — missing in-progress cancellation tests, missing auth tests
-- `calculateFare()` — missing edge cases (zero/negative distance)
-- `isPeakHour()` — missing weekend and non-peak tests
-- `processPayment()` — missing idempotency tests
-- `GET /api/users/:id/ride-history` — missing authorization test (any user can access any user's data)
+**Find what will break before your developers do.**
 
-**Deliberate configuration issues:**
-- Dockerfile `EXPOSE 8080` but app listens on port `3000`
-- `docker-compose.yml` missing `JWT_SECRET` environment variable
-- CI workflow uses Node 16, `package.json` requires Node ≥ 18
-- CI workflow does not run tests
-- README shows port `5000` but app uses port `3000`
-- README documents `npm run test:unit` which doesn't exist in `scripts`
+Built with care, repository evidence, strict TypeScript, and IBM Bob 2.0.
 
----
+[Back to top](#-doctor-dev)
 
-## Security
-
-Doctor Dev is designed to be safe to run against repositories you don't fully control:
-
-- **No secret exposure** — environment variable values are never stored or displayed. Only names are reported. Secret names (matching `API_KEY`, `JWT_SECRET`, `PASSWORD`, etc.) are flagged with `isSecret: true`.
-- **No arbitrary command execution** — the test runner only executes scripts whose values match known safe patterns (`jest`, `vitest`, `mocha`, `npm run ...`). Repository scripts that contain shell operators, pipes, or arbitrary commands are rejected.
-- **Path traversal prevention** — all repository paths are validated and normalized before use. Null bytes, `..` traversal, and symlink escapes are rejected.
-- **Read-only analysis** — Doctor Dev never modifies the repository being analyzed.
-- **File size cap** — files larger than 2 MB are skipped during analysis.
-
----
-
-## API Reference
-
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/api/health` | Service health check |
-| `POST` | `/api/analyze` | Start a new analysis |
-| `GET` | `/api/analysis/:id` | Get analysis status and result |
-| `GET` | `/api/analyses` | List all analyses |
-
-**POST /api/analyze request body:**
-```json
-{
-  "repositoryPath": "/absolute/path/or/relative/from/project-root",
-  "runTests": false,
-  "generateTests": true
-}
-```
-
----
-
-## Limitations
-
-- **Language support:** TypeScript and JavaScript (Node.js) only. Python, Go, Java, etc. are not supported in this version.
-- **Coverage estimation:** File/symbol-level heuristic only. Not instrumented code coverage — labeled as such in the UI.
-- **Test mapping:** Based on filename proximity and import analysis. May miss some valid test-to-source relationships.
-- **Remote repositories:** Only local paths are supported. Git cloning is not implemented.
-- **Database persistence:** In-memory only. Analyses are lost on server restart.
-
----
-
-## IBM Bob Usage
-
-This project was developed using **IBM Bob IDE** as a core development tool throughout the entire development process:
-
-- Project architecture planning
-- Backend Express server and route scaffolding
-- Analysis engine design (TestPilot, ConfigDoctor)
-- AST analysis with ts-morph
-- Security module review and hardening
-- Frontend component development
-- TypeScript type system design
-- Bug investigation and debugging
-- Documentation
-
-See [`docs/bob-usage.md`](docs/bob-usage.md) for detailed session documentation.
-
----
-
-## Project Structure
-
-```
-doctor-dev/
-├── frontend/                   React + TypeScript + Vite + Tailwind
-│   └── src/
-│       ├── api/                REST client
-│       ├── components/         Reusable UI components
-│       ├── pages/              Tab page components
-│       ├── lib/                Utility functions
-│       └── types/              TypeScript types
-│
-├── backend/                    Node.js + TypeScript + Express
-│   └── src/
-│       ├── analyzers/          Core analysis engines
-│       │   ├── repositoryAnalyzer.ts   File scanning + tech detection
-│       │   ├── codeAnalyzer.ts         AST symbol + route extraction
-│       │   ├── configAnalyzer.ts       Test profile + env var analysis
-│       │   ├── testPilot.ts            Test gap detection + generation
-│       │   └── configDoctor.ts         Config issue detection
-│       ├── runners/            Controlled test execution
-│       ├── services/           Pipeline orchestration + prioritization
-│       ├── controllers/        HTTP handler logic
-│       ├── routes/             Express route definitions
-│       ├── models/             In-memory session store
-│       ├── types/              Shared TypeScript types
-│       └── utils/security.ts   Path sanitization + secret detection
-│
-├── demo-repository/            Sample rideshare API (deliberate gaps)
-├── docs/                       Architecture + Bob usage documentation
-├── bob_sessions/               IBM Bob IDE session artifacts
-├── AGENTS.md                   Project rules and conventions
-├── DOCTOR_DEV_STATUS.md          Phase tracking
-└── README.md                   ← this file
-```
-
----
-
-## License
-
-MIT
+</div>
