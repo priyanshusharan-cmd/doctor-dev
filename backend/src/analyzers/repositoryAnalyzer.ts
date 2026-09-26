@@ -372,22 +372,29 @@ function detectFramework(
   deps: Record<string, string>,
   devDeps: Record<string, string>,
 ): string | undefined {
-  const all = { ...deps, ...devDeps };
-  const keys = Object.keys(all).map((k) => k.toLowerCase());
+  const prodKeys = Object.keys(deps).map((k) => k.toLowerCase());
+  const allKeys = Object.keys({ ...deps, ...devDeps }).map((k) => k.toLowerCase());
 
-  if (keys.includes('next')) return 'Next.js';
-  if (keys.includes('nuxt') || keys.includes('nuxt3')) return 'Nuxt.js';
-  if (keys.includes('remix')) return 'Remix';
-  if (keys.includes('@nestjs/core')) return 'NestJS';
-  if (keys.includes('express')) return 'Express';
-  if (keys.includes('fastify')) return 'Fastify';
-  if (keys.includes('koa')) return 'Koa';
-  if (keys.includes('hapi') || keys.includes('@hapi/hapi')) return 'Hapi';
-  if (keys.includes('react') && keys.includes('vite')) return 'React + Vite';
-  if (keys.includes('react')) return 'React';
-  if (keys.includes('vue')) return 'Vue';
-  if (keys.includes('svelte')) return 'Svelte';
-  if (keys.includes('@angular/core')) return 'Angular';
+  // Backend frameworks must be in production dependencies
+  if (prodKeys.includes('next')) return 'Next.js';
+  if (prodKeys.includes('nuxt') || prodKeys.includes('nuxt3')) return 'Nuxt.js';
+  if (prodKeys.includes('remix')) return 'Remix';
+  if (prodKeys.includes('@nestjs/core')) return 'NestJS';
+  if (prodKeys.includes('express')) return 'Express';
+  if (prodKeys.includes('fastify')) return 'Fastify';
+  if (prodKeys.includes('koa')) return 'Koa';
+  if (prodKeys.includes('hapi') || prodKeys.includes('@hapi/hapi')) return 'Hapi';
+
+  // Frontend frameworks can often be devDependencies (static sites, vite, etc.)
+  if (allKeys.includes('next')) return 'Next.js';
+  if (allKeys.includes('nuxt') || allKeys.includes('nuxt3')) return 'Nuxt.js';
+  if (allKeys.includes('remix')) return 'Remix';
+  if (allKeys.includes('react') && allKeys.includes('vite')) return 'React + Vite';
+  if (allKeys.includes('react')) return 'React';
+  if (allKeys.includes('vue')) return 'Vue';
+  if (allKeys.includes('svelte')) return 'Svelte';
+  if (allKeys.includes('@angular/core')) return 'Angular';
+
   return undefined;
 }
 
@@ -453,18 +460,29 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
   const fixtureFiles: string[] = [];
   const helperFiles: string[] = [];
   const benchmarkFiles: string[] = [];
+  const exampleFiles: string[] = [];
 
   for (const raw of rawTestFiles) {
     const norm = raw.replace(/\\/g, '/');
     const lower = norm.toLowerCase();
-    if (/(^|\/)(fixtures?|__fixtures__|samples?)\//.test(lower)) {
+    if (/(^|\/)(fixtures?|__fixtures__|samples?|sandbox|mocks?|__mocks__|e2e)\//.test(lower)) {
       fixtureFiles.push(norm);
-    } else if (/(^|\/)(common|helpers?|mocks?|__mocks__|support)\//.test(lower)) {
+    } else if (/(^|\/)(common|helpers?|support)\//.test(lower)) {
       helperFiles.push(norm);
     } else if (/(^|\/)(benchmarks?|bench)\//.test(lower)) {
       benchmarkFiles.push(norm);
+    } else if (/(^|\/)(examples?)\//.test(lower)) {
+      exampleFiles.push(norm);
     } else {
       testFiles.push(norm);
+    }
+  }
+
+  // Also aggressively find examples and sandbox folders that might not match TEST_PATTERNS
+  for (const srcFile of allSourceFiles) {
+    const norm = srcFile.replace(/\\/g, '/').toLowerCase();
+    if (/(^|\/)(examples?|sandbox)\//.test(norm) && !exampleFiles.includes(srcFile.replace(/\\/g, '/'))) {
+      exampleFiles.push(srcFile.replace(/\\/g, '/'));
     }
   }
 
@@ -473,6 +491,7 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
     ...fixtureFiles,
     ...helperFiles,
     ...benchmarkFiles,
+    ...exampleFiles,
   ]);
   const pureSourceFiles = allSourceFiles.filter((f) => !nonProdFiles.has(f.replace(/\\/g, '/')));
 

@@ -423,7 +423,10 @@ export function categorizeEnvVar(name: string): EnvVarCategory {
     upper === 'FORCE_COLOR' ||
     upper === 'NO_COLOR' ||
     upper === 'PORT' ||
-    upper === 'HOST'
+    upper === 'HOST' ||
+    upper === 'NO_PROXY' ||
+    upper === 'HTTP_PROXY' ||
+    upper === 'HTTPS_PROXY'
   ) {
     return 'TOOLING';
   }

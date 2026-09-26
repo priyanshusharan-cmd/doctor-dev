@@ -38,11 +38,14 @@ export function buildTestMappings(
       const suiteBase = suite.filePath.replace(/\.(ts|tsx|js|jsx)$/, '').replace(/\\/g, '/');
 
       // Direct name match: foo.ts ↔ foo.test.ts
+      const suiteBaseLower = suiteBase.toLowerCase();
+      const sfNameLower = sfName.toLowerCase();
       if (
-        suiteBase.endsWith(`/${sfName}.test`) ||
-        suiteBase.endsWith(`/${sfName}.spec`) ||
-        suiteBase.endsWith(`/${sfName}`) ||
-        suiteBase.endsWith(`_test`)
+        suiteBaseLower.endsWith(`/${sfNameLower}.test`) ||
+        suiteBaseLower.endsWith(`/${sfNameLower}.spec`) ||
+        suiteBaseLower.endsWith(`/${sfNameLower}`) ||
+        suiteBaseLower.endsWith(`/${sfNameLower}_test`) ||
+        suiteBaseLower.endsWith(`/test_${sfNameLower}`)
       ) {
         relatedTests.push(suite.filePath);
         evidence.push(`Direct file name match with ${suite.filePath}`);

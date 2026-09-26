@@ -54,9 +54,9 @@ function scoreSymbol(
 
 export function getSourceType(filePath: string): SourceType {
   const normalized = filePath.replace(/\\/g, '/').toLowerCase();
-  if (/(^|\/)(examples?|samples?)\//.test(normalized)) return 'examples';
+  if (/(^|\/)(examples?|samples?|sandbox)\//.test(normalized)) return 'examples';
   if (/(^|\/)benchmarks?\//.test(normalized)) return 'benchmarks';
-  if (/(^|\/)fixtures?\//.test(normalized)) return 'fixtures';
+  if (/(^|\/)(fixtures?|mocks?|__mocks__|e2e)\//.test(normalized)) return 'fixtures';
   if (/(^|\/)docs?\//.test(normalized)) return 'documentation';
   if (/(^|\/)(tests?|__tests__|specs?)\//.test(normalized) || /\.(test|spec)\./.test(normalized)) return 'tests';
   if (/(^|\/)generated\//.test(normalized)) return 'generated';

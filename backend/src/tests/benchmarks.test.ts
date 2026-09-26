@@ -273,6 +273,44 @@ def test_login_failure():
     console.log('✓ Test 11 passed: Unsupported coverage format returns ACTUAL_COVERAGE with undefined percentage.');
   }
 
+  // ─── Test 12: NO_PROXY and Proxy Variables ─────────────────────────────────────
+  console.log('Test 12: NO_PROXY categorized as TOOLING');
+  {
+    assert.strictEqual(categorizeEnvVar('NO_PROXY'), 'TOOLING');
+    assert.strictEqual(categorizeEnvVar('HTTP_PROXY'), 'TOOLING');
+    assert.strictEqual(categorizeEnvVar('HTTPS_PROXY'), 'TOOLING');
+    console.log('✓ Test 12 passed: NO_PROXY is TOOLING, not application env var.');
+  }
+
+  // ─── Test 13: Axios framework and test servers ──────────────────────────────────
+  console.log('Test 13: Framework devDependencies and test server routes are ignored');
+  {
+    const mockAxiosRepo = path.join(__dirname, 'mock_axios_repo');
+    fs.mkdirSync(mockAxiosRepo, { recursive: true });
+    fs.writeFileSync(path.join(mockAxiosRepo, 'package.json'), JSON.stringify({
+      name: 'axios',
+      dependencies: { 'follow-redirects': '^1.15.6' },
+      devDependencies: { 'express': '^4.19.2' }
+    }));
+    fs.mkdirSync(path.join(mockAxiosRepo, 'sandbox'), { recursive: true });
+    fs.writeFileSync(path.join(mockAxiosRepo, 'sandbox', 'server.js'), `
+      const express = require('express');
+      const app = express();
+      app.get('/test', (req, res) => res.send('ok'));
+      app.listen(3000);
+    `);
+
+    const profile = await analyzeRepository(mockAxiosRepo);
+    assert.strictEqual(profile.framework, undefined, 'Express in devDependencies should not trigger primary framework detection');
+    
+    // Check if test-only routes are ignored
+    const { getSourceType } = require('../analyzers/codeAnalyzer');
+    assert.strictEqual(getSourceType('sandbox/server.js'), 'examples');
+
+    fs.rmSync(mockAxiosRepo, { recursive: true, force: true });
+    console.log('✓ Test 13 passed: Frameworks in devDependencies and test routes/ports are properly handled.');
+  }
+
   console.log('\nAll DoctorDev regression benchmarks passed successfully!');
 }
 
