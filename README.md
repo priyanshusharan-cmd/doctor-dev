@@ -158,16 +158,13 @@ Doctor Dev avoids presenting a made-up percentage when numeric coverage is unava
 
 ## 📸 Product tour
 
-The sections below are intentionally collapsible. Replace each placeholder with a real screenshot before submission while keeping the same paths for a clean GitHub presentation.
+Each product screenshot is tucked into a collapsible panel to keep this long-form README easy to scan. Open any section for the full-resolution view. Panels still marked as placeholders need a dedicated capture before final submission.
 
 <details>
-<summary><strong>📸 Screenshot 01 — Repository input and analysis options</strong></summary>
+<summary><strong>📸 Screenshot 01 — Landing page and repository input</strong></summary>
 <br>
 
-> **Screenshot placeholder:** `docs/assets/screenshots/01-repository-input.png`<br>
-> Show the GitHub/local path input, test generation toggle, run-tests toggle, and Try Demo action.
-
-<!-- Replace this comment with: ![Repository input](docs/assets/screenshots/01-repository-input.png) -->
+![Doctor Dev landing page with repository input and analysis options](doctor-dev-ss/doctordev1.png)
 </details>
 
 <details>
@@ -184,30 +181,21 @@ The sections below are intentionally collapsible. Replace each placeholder with 
 <summary><strong>📸 Screenshot 03 — Health overview</strong></summary>
 <br>
 
-> **Screenshot placeholder:** `docs/assets/screenshots/03-health-overview.png`<br>
-> Capture the final score, grade, repository profile, and highest-priority findings.
-
-<!-- Replace this comment with: ![Health overview](docs/assets/screenshots/03-health-overview.png) -->
+![Doctor Dev overview showing the repository profile and health score](doctor-dev-ss/doctordev2.png)
 </details>
 
 <details>
 <summary><strong>📸 Screenshot 04 — TestPilot evidence</strong></summary>
 <br>
 
-> **Screenshot placeholder:** `docs/assets/screenshots/04-testpilot-findings.png`<br>
-> Expand a gap so reviewers can see confidence, evidence, reason, and recommended tests.
-
-<!-- Replace this comment with: ![TestPilot findings](docs/assets/screenshots/04-testpilot-findings.png) -->
+![TestPilot dashboard showing coverage evidence, testing gaps, routes, and test files](doctor-dev-ss/doctordev3.png)
 </details>
 
 <details>
 <summary><strong>📸 Screenshot 05 — ConfigDoctor findings</strong></summary>
 <br>
 
-> **Screenshot placeholder:** `docs/assets/screenshots/05-configdoctor-findings.png`<br>
-> Show an environment, Docker, CI, or port mismatch with its remediation.
-
-<!-- Replace this comment with: ![ConfigDoctor findings](docs/assets/screenshots/05-configdoctor-findings.png) -->
+![ConfigDoctor dashboard showing configuration issues, ports, and environment variables](doctor-dev-ss/doctordev4.png)
 </details>
 
 <details>
@@ -224,10 +212,7 @@ The sections below are intentionally collapsible. Replace each placeholder with 
 <summary><strong>📸 Screenshot 07 — Final report</strong></summary>
 <br>
 
-> **Screenshot placeholder:** `docs/assets/screenshots/07-final-report.png`<br>
-> Capture the report summary and Markdown, JSON, and print/PDF actions.
-
-<!-- Replace this comment with: ![Final report](docs/assets/screenshots/07-final-report.png) -->
+![Doctor Dev final report with health score, findings summary, and export actions](doctor-dev-ss/doctordev5.png)
 </details>
 
 <details>
