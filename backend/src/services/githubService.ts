@@ -1,4 +1,4 @@
-import { execSync } from 'child_process';
+import execa from 'execa';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
@@ -41,7 +41,7 @@ export function normalizeGitHubUrl(input: string): string {
  * Returns the temp directory path.
  * The caller is responsible for calling cleanupClone() when done.
  */
-export function cloneGitHubRepo(repoUrl: string): string {
+export async function cloneGitHubRepo(repoUrl: string): Promise<string> {
   const normalUrl = normalizeGitHubUrl(repoUrl);
   const safeUrl = normalUrl.replace(/\.git$/, '');
 
@@ -52,17 +52,10 @@ export function cloneGitHubRepo(repoUrl: string): string {
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), `doctor-dev-${userName}-${repoName}-`));
 
-  console.log(`[doctor-dev] Cloning ${normalUrl} → ${tmpDir}`);
-
   try {
-    execSync(
-      `git clone --depth 1 --single-branch "${normalUrl}" "${tmpDir}"`,
-      {
-        stdio: 'pipe',
-        timeout: 120_000, // 2 minutes max
-        encoding: 'utf-8',
-      },
-    );
+    await execa('git', ['clone', '--depth', '1', '--single-branch', normalUrl, tmpDir], {
+      timeout: 120_000,
+    });
   } catch (err: unknown) {
     // Clean up temp dir if clone failed
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
@@ -86,10 +79,14 @@ export function cloneGitHubRepo(repoUrl: string): string {
  */
 export function cleanupClone(tmpDir: string): void {
   try {
-    if (tmpDir.includes(os.tmpdir()) && tmpDir.includes('doctor-dev-')) {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-      console.log(`[doctor-dev] Cleaned up clone: ${tmpDir}`);
-    }
+    const resolvedTmp = path.resolve(os.tmpdir());
+    const resolvedClone = path.resolve(tmpDir);
+    const relative = path.relative(resolvedTmp, resolvedClone);
+    const isManagedClone = relative.length > 0
+      && !relative.startsWith('..')
+      && !path.isAbsolute(relative)
+      && path.basename(resolvedClone).startsWith('doctor-dev-');
+    if (isManagedClone) fs.rmSync(resolvedClone, { recursive: true, force: true });
   } catch {
     // Best-effort cleanup
   }

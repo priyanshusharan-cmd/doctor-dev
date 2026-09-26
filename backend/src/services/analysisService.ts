@@ -61,7 +61,7 @@ async function runPipeline(
     // ── 0. Resolve path (clone if GitHub) ───────────────────────────────────
     if (isGitHub) {
       setStatus(id, 'scanning', 'Cloning GitHub repository…');
-      clonedTmpDir = cloneGitHubRepo(rawPath);
+      clonedTmpDir = await cloneGitHubRepo(rawPath);
       repoPath = clonedTmpDir;
     } else {
       repoPath = resolveRepoPath(rawPath);

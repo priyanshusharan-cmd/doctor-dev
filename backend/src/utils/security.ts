@@ -1,5 +1,6 @@
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 /** Patterns that indicate a secret variable name — matched case-insensitively */
 const SECRET_PATTERNS = [
@@ -29,6 +30,16 @@ export function redactValue(_value: string): string {
   return 'REDACTED';
 }
 
+function isPathInside(child: string, parent: string): boolean {
+  const c = path.normalize(child);
+  let p = path.normalize(parent);
+  if (c === p) return true;
+  if (!p.endsWith(path.sep)) {
+    p += path.sep;
+  }
+  return c.startsWith(p);
+}
+
 /**
  * Resolve and sanitize a repository path.
  * Defends against:
@@ -54,24 +65,43 @@ export function resolveRepoPath(inputPath: string): string {
     ? path.normalize(inputPath)
     : path.resolve(projectRoot, inputPath);
 
-  // After normalisation, check the resolved path does not contain ../
-  // This catches both raw and encoded traversal attempts
-  if (resolved.includes('..')) {
-    throw new Error('Path traversal is not allowed');
-  }
-
   // Must exist
   if (!fs.existsSync(resolved)) {
     throw new Error(`Repository path does not exist: ${resolved}`);
   }
 
-  // Must be a directory (not a file, device, pipe, etc.)
-  const stat = fs.statSync(resolved);
-  if (!stat.isDirectory()) {
-    throw new Error(`Repository path must be a directory, got: ${resolved}`);
+  let realPath: string;
+  try {
+    realPath = fs.realpathSync(resolved);
+  } catch {
+    throw new Error('Repository path could not be resolved');
   }
 
-  return resolved;
+  // Must be a directory (not a file, device, pipe, etc.)
+  const stat = fs.statSync(realPath);
+  if (!stat.isDirectory()) {
+    throw new Error(`Repository path must be a directory, got: ${realPath}`);
+  }
+
+  const allowedRootsEnv = process.env.DOCTOR_DEV_ALLOWED_ROOTS;
+  const rawRoots = allowedRootsEnv
+    ? allowedRootsEnv.split(',').map(r => path.resolve(r.trim()))
+    : [projectRoot, path.resolve(os.tmpdir())];
+
+  const allowedRoots = rawRoots.map(r => {
+    try {
+      return fs.realpathSync(r);
+    } catch {
+      return r;
+    }
+  });
+
+  const isInside = allowedRoots.some(root => isPathInside(realPath, root));
+  if (!isInside) {
+    throw new Error('Repository path is outside the allowed analysis roots');
+  }
+
+  return realPath;
 }
 
 /** Return the directory name as the project name. */
@@ -129,7 +159,23 @@ export function relativePath(repoRoot: string, absPath: string): string {
  * Used to prevent command injection in the test runner.
  */
 export function isSafeTestScript(scriptValue: string): boolean {
-  // Must start with a known safe runner
-  return /^(?:jest|vitest|mocha|nyc|c8|ts-jest|tsx?)/.test(scriptValue) ||
-         /^(?:npm|npx|yarn|pnpm)\s/.test(scriptValue);
+  const command = scriptValue.trim();
+  if (!command || /[;&|><`$\\\r\n]/.test(command)) return false;
+
+  const tokens = command.split(/\s+/);
+  const runner = tokens[0];
+  if (/^(?:jest|vitest|mocha|ts-jest|tsx?)$/.test(runner)) return true;
+  if (runner === 'node') return tokens[1] === '--test';
+
+  if (runner === 'npx') {
+    const packageName = tokens[1] === '--no-install' ? tokens[2] : tokens[1];
+    return /^(?:jest|vitest|mocha|ts-jest)$/.test(packageName ?? '');
+  }
+
+  if (runner === 'nyc' || runner === 'c8') {
+    return /^(?:jest|vitest|mocha)$/.test(tokens[1] ?? '')
+      || (tokens[1] === 'node' && tokens[2] === '--test');
+  }
+
+  return false;
 }

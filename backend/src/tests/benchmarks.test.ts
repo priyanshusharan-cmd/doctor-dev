@@ -1,6 +1,8 @@
 import assert from 'assert';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
+import { isSafeTestScript, resolveRepoPath } from '../utils/security';
 import { categorizeEnvVar, stripComments, analyzeTests, detectCoverage } from '../analyzers/configAnalyzer';
 import { detectPrimaryEcosystem, analyzeRepository } from '../analyzers/repositoryAnalyzer';
 import { analyzeEnvVars } from '../analyzers/configDoctor';
@@ -302,7 +304,7 @@ def test_login_failure():
 
     const profile = await analyzeRepository(mockAxiosRepo);
     assert.strictEqual(profile.framework, undefined, 'Express in devDependencies should not trigger primary framework detection');
-    
+
     // Check if test-only routes are ignored
     const { getSourceType } = require('../analyzers/codeAnalyzer');
     assert.strictEqual(getSourceType('sandbox/server.js'), 'examples');
@@ -373,6 +375,47 @@ def test_login_failure():
 
     fs.rmSync(mockRepo, { recursive: true, force: true });
     console.log('✓ Test 14 passed: Comprehensive false-positive prevention works for large repos.');
+  }
+
+  // ─── Test 15: Path Traversal is Actually Blocked ──────────────────────────────
+  console.log('Test 15: Path traversal is actually blocked');
+  {
+    assert.throws(
+      () => resolveRepoPath('../../../../../../etc'),
+      'Must block relative path traversal outside allowed roots'
+    );
+    assert.throws(
+      () => resolveRepoPath('/etc'),
+      'Must block absolute path traversal outside allowed roots'
+    );
+    console.log('✓ Test 15 passed: Path traversal is actually blocked.');
+  }
+
+  // ─── Test 16: Legitimate Repo Paths Still Work ────────────────────────────────
+  console.log('Test 16: Legitimate repo paths still work');
+  {
+    const demoPath = resolveRepoPath('demo-repository');
+    assert.ok(demoPath.replace(/\\/g, '/').endsWith('demo-repository'), 'Must allow relative path inside project root');
+
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dd-test-'));
+    try {
+      const allowedTmp = resolveRepoPath(tmpDir);
+      assert.ok(allowedTmp.includes('dd-test-'), 'Must allow absolute path inside os.tmpdir()');
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+    console.log('✓ Test 16 passed: Legitimate repo paths still work.');
+  }
+
+  // ─── Test 17: Test scripts cannot append arbitrary shell commands ──────────────
+  console.log('Test 17: Test script command injection is blocked');
+  {
+    assert.ok(isSafeTestScript('vitest run --coverage'));
+    assert.ok(isSafeTestScript('node --test'));
+    assert.ok(!isSafeTestScript('jest; rm -rf /tmp/example'));
+    assert.ok(!isSafeTestScript('npm run arbitrary-script'));
+    assert.ok(!isSafeTestScript('npx rimraf /tmp/example'));
+    console.log('✓ Test 17 passed: Only direct, non-compound test runner commands are allowed.');
   }
 
   console.log('\\nAll DoctorDev regression benchmarks passed successfully!');
