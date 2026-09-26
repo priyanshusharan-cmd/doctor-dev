@@ -24,8 +24,7 @@ export default function Header({ activeTab, onTabChange, hasResult, onHistoryCli
         {/* Top bar */}
         <div className="flex items-center justify-between h-14">
           <div className="flex items-center gap-3">
-            {/* Logo mark */}
-            <button onClick={onLogoClick} className="flex items-center gap-3 hover:opacity-80 transition-opacity text-left">
+            <button onClick={onLogoClick} className="flex items-center gap-3 text-left">
               <div className="relative w-8 h-8 flex-shrink-0">
                 <div className="absolute inset-0 rounded-lg bg-blue-600 opacity-20 blur-md" />
                 <div className="relative w-8 h-8 rounded-lg flex items-center justify-center"
