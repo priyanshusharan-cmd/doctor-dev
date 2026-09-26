@@ -63,7 +63,7 @@ export default function AnalysisProgress({ status, statusLabel }: Props) {
         {/* Progress bar */}
         <div className="h-1.5 rounded-full bg-gray-800 overflow-hidden">
           <div
-            className="h-full rounded-full progress-animated transition-all duration-700 ease-out"
+            className="h-full rounded-full bg-blue-500 transition-all duration-700 ease-out"
             style={{ width: `${pct}%` }}
           />
         </div>

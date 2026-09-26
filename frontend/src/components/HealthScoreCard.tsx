@@ -89,7 +89,7 @@ export default function HealthScoreCard({ score }: Props) {
   const gaugeColor = GAUGE_COLORS[score.grade] ?? '#6b7280';
 
   return (
-    <div className="card rounded-2xl flex flex-col gap-5">
+    <div className="card rounded-2xl flex flex-col gap-5 h-full">
       {/* Score + gauge */}
       <div className="flex items-center gap-5">
         <CircleGauge value={score.overall} color={gaugeColor} size={110} />
@@ -112,7 +112,7 @@ export default function HealthScoreCard({ score }: Props) {
       </div>
 
       {/* Dimension bars */}
-      <div className="space-y-3 pt-1 border-t border-gray-800/60">
+      <div className="space-y-3 pt-1 border-t border-gray-800/60 mt-auto">
         <ScoreBar label="Testing" value={score.testing} />
         <ScoreBar label="Configuration" value={score.configuration} />
         <ScoreBar label="Security" value={score.security} />
