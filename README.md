@@ -13,7 +13,11 @@
 
 Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence · Designed for actionable results
 
-[Why Doctor Dev?](#-the-problem) • [Features](#-what-doctor-dev-finds) • [Screenshots](#-product-tour) • [Presentation](#-hackathon-presentation) • [Quick start](#-quick-start) • [Architecture](#-architecture) • [API](#-api-reference) • [IBM Bob](#-built-with-ibm-bob-20)
+[Demo video](#-demo-video) • [Product screenshots](#-product-tour) • [IBM Bob evidence](#ibm-bob-usage-evidence) • [Presentation](#-hackathon-presentation) • [Quick start](#-quick-start) • [Architecture](#-architecture)
+
+[📸 Product screenshots](submission/screenshots/) • [🤖 IBM Bob usage screenshots](submission/bob-usage/) • [📄 IBM Bob task export](submission/bob-task-fcbb69e7abf2f34a815ca5d7aa172b92-2026-09-26.json) • [📊 Presentation PDF](submission/Doctor_Dev_Hackathon_Deck_Final.pdf)
+
+<img src="submission/Doctor_Dev_Cover.png" alt="Doctor Dev — AI-powered software health checker" width="100%">
 
 </div>
 
@@ -21,6 +25,55 @@ Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence �
 
 > [!NOTE]
 > Doctor Dev does not return a vague AI review. It scans real files, builds structured evidence, assigns confidence, prioritizes risks, and produces concrete recommendations that a developer can act on.
+
+## 🎬 Demo video
+
+<div align="center">
+
+<!-- DEMO_VIDEO_PLACEHOLDER: Drag submission/Doctor_Dev_Demo.mp4 into the GitHub README editor and replace the line below with the generated GitHub video link. -->
+
+🎥 **Demo video placeholder — the GitHub-hosted video will be embedded here before final submission.**
+
+[Download the current 2:19 demo recording](submission/Doctor_Dev_Demo.mp4)
+
+</div>
+
+---
+
+## 📸 Product tour
+
+The captures below are matched to the screen they show. Select any image to open it at full resolution.
+
+<table>
+<tr>
+<td width="50%" valign="top" align="center">
+<a href="submission/screenshots/01-landing-and-repository-input.png"><img src="submission/screenshots/01-landing-and-repository-input.png" alt="Doctor Dev landing page and repository input" width="100%"></a>
+<br><strong>01 · Landing and repository input</strong>
+</td>
+<td width="50%" valign="top" align="center">
+<a href="submission/screenshots/02-health-overview.png"><img src="submission/screenshots/02-health-overview.png" alt="Doctor Dev repository profile and health overview" width="100%"></a>
+<br><strong>02 · Repository profile and health overview</strong>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top" align="center">
+<a href="submission/screenshots/03-testpilot-evidence.png"><img src="submission/screenshots/03-testpilot-evidence.png" alt="TestPilot coverage evidence, testing gaps, routes, and test files" width="100%"></a>
+<br><strong>03 · TestPilot evidence and testing gaps</strong>
+</td>
+<td width="50%" valign="top" align="center">
+<a href="submission/screenshots/04-configdoctor-findings.png"><img src="submission/screenshots/04-configdoctor-findings.png" alt="ConfigDoctor configuration issues, ports, and environment variables" width="100%"></a>
+<br><strong>04 · ConfigDoctor findings</strong>
+</td>
+</tr>
+<tr>
+<td colspan="2" valign="top" align="center">
+<a href="submission/screenshots/05-final-health-report.png"><img src="submission/screenshots/05-final-health-report.png" alt="Doctor Dev final health report and export actions" width="70%"></a>
+<br><strong>05 · Final health report and export actions</strong>
+</td>
+</tr>
+</table>
+
+---
 
 ## ✨ The idea in one minute
 
@@ -156,86 +209,16 @@ Doctor Dev avoids presenting a made-up percentage when numeric coverage is unava
 
 ---
 
-## 📸 Product tour
-
-Each product screenshot is tucked into a collapsible panel to keep this long-form README easy to scan. Open any section for the full-resolution view. Panels still marked as placeholders need a dedicated capture before final submission.
-
-<details>
-<summary><strong>📸 Screenshot 01 — Landing page and repository input</strong></summary>
-<br>
-
-![Doctor Dev landing page with repository input and analysis options](doctor-dev-ss/doctordev1.png)
-</details>
-
-<details>
-<summary><strong>📸 Screenshot 02 — Live analysis pipeline</strong></summary>
-<br>
-
-> **Screenshot placeholder:** `docs/assets/screenshots/02-analysis-progress.png`<br>
-> Capture scanning, code analysis, test mapping, configuration analysis, and prioritization.
-
-<!-- Replace this comment with: ![Analysis progress](docs/assets/screenshots/02-analysis-progress.png) -->
-</details>
-
-<details>
-<summary><strong>📸 Screenshot 03 — Health overview</strong></summary>
-<br>
-
-![Doctor Dev overview showing the repository profile and health score](doctor-dev-ss/doctordev2.png)
-</details>
-
-<details>
-<summary><strong>📸 Screenshot 04 — TestPilot evidence</strong></summary>
-<br>
-
-![TestPilot dashboard showing coverage evidence, testing gaps, routes, and test files](doctor-dev-ss/doctordev3.png)
-</details>
-
-<details>
-<summary><strong>📸 Screenshot 05 — ConfigDoctor findings</strong></summary>
-<br>
-
-![ConfigDoctor dashboard showing configuration issues, ports, and environment variables](doctor-dev-ss/doctordev4.png)
-</details>
-
-<details>
-<summary><strong>📸 Screenshot 06 — Generated tests and validation</strong></summary>
-<br>
-
-> **Screenshot placeholder:** `docs/assets/screenshots/06-validation.png`<br>
-> Show generated test skeletons or controlled test execution results.
-
-<!-- Replace this comment with: ![Validation](docs/assets/screenshots/06-validation.png) -->
-</details>
-
-<details>
-<summary><strong>📸 Screenshot 07 — Final report</strong></summary>
-<br>
-
-![Doctor Dev final report with health score, findings summary, and export actions](doctor-dev-ss/doctordev5.png)
-</details>
-
-<details>
-<summary><strong>🤖 Screenshot 08 — IBM Bob task session evidence</strong></summary>
-<br>
-
-> **Screenshot placeholder:** `bob_sessions/session-001-architecture.png`<br>
-> Use a real IBM Bob task summary screenshot. Never substitute fabricated evidence.
-
-<!-- Replace this comment with: ![IBM Bob session](bob_sessions/session-001-architecture.png) -->
-</details>
-
----
-
 ## 🎤 Hackathon presentation
 
 The eight-slide presentation covers the developer-workflow problem, Doctor Dev's two analysis engines, the evidence-based pipeline, product experience, business value, IBM Bob usage, and the roadmap.
 
 <div align="center">
 
-### [⬇️ Download the Doctor Dev presentation deck](doctor-dev-ss/Doctor_Dev_Hackathon_Presentation_Deck.pptx)
+### [⬇️ Download the Doctor Dev presentation deck](submission/Doctor_Dev_Hackathon_Presentation_Deck.pptx)
 
-**Microsoft PowerPoint · 8 slides · Includes presenter notes**
+**Microsoft PowerPoint · 8 slides · Includes presenter notes**<br>
+[View the final PDF](submission/Doctor_Dev_Hackathon_Deck_Final.pdf)
 
 </div>
 
@@ -602,11 +585,40 @@ IBM Bob contributed to:
 - the demo scenario and technical documentation;
 - strict TypeScript and regression review.
 
-The detailed development narrative is in [`docs/bob-usage.md`](docs/bob-usage.md). Real task-session screenshots and exports belong in [`bob_sessions/`](bob_sessions/); the project explicitly prohibits fabricated evidence.
+The detailed development narrative is in [`docs/bob-usage.md`](docs/bob-usage.md). The submission includes the [complete IBM Bob screenshot set](submission/bob-usage/) and the [exported Bob task JSON](submission/bob-task-fcbb69e7abf2f34a815ca5d7aa172b92-2026-09-26.json). These are real session artifacts; the project explicitly prohibits fabricated evidence.
 
 ### Why IBM Bob mattered
 
 The challenge asks builders to improve a developer workflow with repository-aware AI. Bob's repository context made it possible to reason across frontend state, backend types, analyzers, security, tests, and documentation as one system. That connected-repository philosophy became the foundation of Doctor Dev.
+
+### IBM Bob usage evidence
+
+These screenshots preserve the actual Bob task sequence: project planning, repository and architecture review, analyzer debugging, targeted fixes, and end-to-end validation. Select any image to open the full-resolution evidence.
+
+<table>
+<tr>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-01.png"><img src="submission/bob-usage/bob-session-01.png" alt="IBM Bob project plan and phase checklist" width="100%"></a><br><strong>01 · Project plan and phases</strong></td>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-02.png"><img src="submission/bob-usage/bob-session-02.png" alt="IBM Bob project goals and engineering rules" width="100%"></a><br><strong>02 · Goals and engineering rules</strong></td>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-03.png"><img src="submission/bob-usage/bob-session-03.png" alt="IBM Bob stack, workflow, and working-state review" width="100%"></a><br><strong>03 · Stack and workflow review</strong></td>
+</tr>
+<tr>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-04.png"><img src="submission/bob-usage/bob-session-04.png" alt="IBM Bob ConfigDoctor root-cause analysis" width="100%"></a><br><strong>04 · ConfigDoctor root causes</strong></td>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-05.png"><img src="submission/bob-usage/bob-session-05.png" alt="IBM Bob completed phases and integration status" width="100%"></a><br><strong>05 · Completed phases</strong></td>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-06.png"><img src="submission/bob-usage/bob-session-06.png" alt="IBM Bob backend repository map" width="100%"></a><br><strong>06 · Backend repository map</strong></td>
+</tr>
+<tr>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-07.png"><img src="submission/bob-usage/bob-session-07.png" alt="IBM Bob frontend and demo repository review" width="100%"></a><br><strong>07 · Frontend and demo review</strong></td>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-08.png"><img src="submission/bob-usage/bob-session-08.png" alt="IBM Bob final smoke-test plan" width="100%"></a><br><strong>08 · Final smoke-test plan</strong></td>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-09.png"><img src="submission/bob-usage/bob-session-09.png" alt="IBM Bob README port mismatch fix and typecheck" width="100%"></a><br><strong>09 · Port fix and typecheck</strong></td>
+</tr>
+<tr>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-10.png"><img src="submission/bob-usage/bob-session-10.png" alt="IBM Bob smoke-test debugging" width="100%"></a><br><strong>10 · Smoke-test debugging</strong></td>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-11.png"><img src="submission/bob-usage/bob-session-11.png" alt="IBM Bob comment-induced false-positive diagnosis" width="100%"></a><br><strong>11 · False-positive diagnosis</strong></td>
+<td width="33%" align="center"><a href="submission/bob-usage/bob-session-12.png"><img src="submission/bob-usage/bob-session-12.png" alt="IBM Bob targeted analyzer fix plan" width="100%"></a><br><strong>12 · Targeted analyzer fixes</strong></td>
+</tr>
+</table>
+
+Direct evidence: [all Bob screenshots](submission/bob-usage/) · [Bob task JSON export](submission/bob-task-fcbb69e7abf2f34a815ca5d7aa172b92-2026-09-26.json)
 
 ---
 
@@ -622,6 +634,7 @@ doctor-dev/
 │   ├── benchmark.md          Benchmark notes
 │   └── bob-usage.md          IBM Bob development record
 ├── bob_sessions/             Real IBM Bob evidence store
+├── submission/               Hackathon screenshots, Bob evidence, deck, and demo video
 ├── AGENTS.md                 Engineering conventions
 ├── DOCTOR_DEV_STATUS.md      Phase tracking
 └── README.md                 Project overview
@@ -689,6 +702,10 @@ npm run build
 **Find what will break before your developers do.**
 
 Built with care, repository evidence, strict TypeScript, and IBM Bob 2.0.
+
+Made by **Priyanshu Sharan**
+
+<a href="https://www.linkedin.com/in/priyanshusharan/"><img src="submission/linkedin.png" alt="Priyanshu Sharan on LinkedIn" width="24"></a>
 
 [Back to top](#-doctor-dev)
 
