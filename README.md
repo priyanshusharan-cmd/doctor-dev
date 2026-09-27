@@ -1,3 +1,5 @@
+<a id="top"></a>
+
 <div align="center">
 
 <img src="submission/doctor-dev-logo.png" alt="Doctor Dev logo" width="180">
@@ -30,11 +32,11 @@ Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence �
 
 <div align="center">
 
-https://github.com/user-attachments/assets/38083d66-5122-4caa-909d-172b2356c822
+<a href="submission/Doctor_Dev_Demo.mp4"><img src="submission/Doctor_Dev_Demo_Preview.png" alt="Play the Doctor Dev demo video" width="760"></a>
 
-🎥 **Demo video placeholder — the GitHub-hosted video will be embedded here before final submission.**
+### [▶️ Play the 2:19 Doctor Dev demo](submission/Doctor_Dev_Demo.mp4)
 
-[Download the current 2:19 demo recording](submission/Doctor_Dev_Demo.mp4)
+**Web-optimized MP4 · H.264/AAC · 1280×832 · 7.7 MB**
 
 </div>
 
@@ -724,6 +726,6 @@ Made by **Priyanshu Sharan**
 
 <a href="https://www.linkedin.com/in/priyanshusharan/"><img src="submission/linkedin-logo.png" alt="Priyanshu Sharan on LinkedIn" width="28"></a>
 
-[Back to top](#-doctor-dev)
+[Back to top](#top)
 
 </div>
