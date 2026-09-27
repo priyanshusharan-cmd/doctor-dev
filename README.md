@@ -1,8 +1,7 @@
 <div align="center">
 
 <img src="submission/doctor-dev-logo.png" alt="Doctor Dev logo" width="180">
-
-# 🩺 Doctor Dev
+# Doctor Dev
 
 ### Find what will break before your developers do.
 
@@ -30,7 +29,7 @@ Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence �
 
 <div align="center">
 
-<!-- DEMO_VIDEO_PLACEHOLDER: Drag submission/Doctor_Dev_Demo.mp4 into the GitHub README editor and replace the line below with the generated GitHub video link. -->
+https://github.com/user-attachments/assets/38083d66-5122-4caa-909d-172b2356c822
 
 🎥 **Demo video placeholder — the GitHub-hosted video will be embedded here before final submission.**
 
