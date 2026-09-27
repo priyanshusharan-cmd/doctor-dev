@@ -29,6 +29,14 @@ app.get('/api/health', (_req: Request, res: Response) => {
 // ─── Routes ───────────────────────────────────────────────────────────────────
 app.use('/api', analysisRouter);
 
+// ─── Root ──────────────────────────────────────────────────────────────────────
+app.get('/', (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    message: 'Doctor Dev backend is running'
+  });
+});
+
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Not found' });
@@ -42,8 +50,8 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`[doctor-dev] Backend running at http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`[doctor-dev] Backend running at http://0.0.0.0:${PORT}`);
   console.log(`[doctor-dev] Health:   GET  http://localhost:${PORT}/api/health`);
   console.log(`[doctor-dev] Analyze:  POST http://localhost:${PORT}/api/analyze`);
   console.log(`[doctor-dev] Result:   GET  http://localhost:${PORT}/api/analysis/:id`);
