@@ -720,7 +720,7 @@ Built with care, repository evidence, strict TypeScript, and IBM Bob 2.0.
 
 Made by **Priyanshu Sharan**
 
-<a href="https://www.linkedin.com/in/priyanshusharan/"><img src="submission/linkedin.png" alt="Priyanshu Sharan on LinkedIn" width="24"></a>
+<a href="https://www.linkedin.com/in/priyanshusharan/"><img src="submission/linkedin-logo.png" alt="Priyanshu Sharan on LinkedIn" width="28"></a>
 
 [Back to top](#-doctor-dev)
 
