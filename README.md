@@ -15,8 +15,6 @@ Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence �
 
 [Demo video](#-demo-video) • [Product screenshots](#-product-tour) • [IBM Bob evidence](#ibm-bob-usage-evidence) • [Presentation](#-hackathon-presentation) • [Quick start](#-quick-start) • [Architecture](#-architecture)
 
-[📸 Product screenshots](submission/screenshots/) • [🤖 IBM Bob usage screenshots](submission/bob-usage/) • [📄 IBM Bob task export](submission/bob-task-fcbb69e7abf2f34a815ca5d7aa172b92-2026-09-26.json) • [📊 Presentation PDF](submission/Doctor_Dev_Hackathon_Deck_Final.pdf)
-
 <img src="submission/Doctor_Dev_Cover.png" alt="Doctor Dev — AI-powered software health checker" width="100%">
 
 </div>
