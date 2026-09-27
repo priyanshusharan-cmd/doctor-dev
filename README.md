@@ -1,4 +1,5 @@
 <a id="top"></a>
+<a id="-doctor-dev"></a>
 
 <div align="center">
 
@@ -32,11 +33,7 @@ Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence �
 
 <div align="center">
 
-<a href="submission/Doctor_Dev_Demo.mp4"><img src="submission/Doctor_Dev_Demo_Preview.png" alt="Play the Doctor Dev demo video" width="760"></a>
-
-### [▶️ Play the 2:19 Doctor Dev demo](submission/Doctor_Dev_Demo.mp4)
-
-**Web-optimized MP4 · H.264/AAC · 1280×832 · 7.7 MB**
+https://github.com/user-attachments/assets/0f762bcb-6212-45c9-b160-565cfe1926e8
 
 </div>
 
@@ -716,7 +713,7 @@ npm run build
 
 <div align="center">
 
-### 🩺 Doctor Dev
+<strong>🩺 Doctor Dev</strong>
 
 **Find what will break before your developers do.**
 
