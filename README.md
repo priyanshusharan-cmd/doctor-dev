@@ -42,36 +42,47 @@ Built for the **IBM Bob 2.0 Hackathon** · Powered by real repository evidence �
 
 ## 📸 Product tour
 
-The captures below are matched to the screen they show. Select any image to open it at full resolution.
+The captures below are matched to the screen they show. Expand only the view you want to inspect, then select the image to open it at full resolution.
 
-<table>
-<tr>
-<td width="50%" valign="top" align="center">
-<a href="submission/screenshots/01-landing-and-repository-input.png"><img src="submission/screenshots/01-landing-and-repository-input.png" alt="Doctor Dev landing page and repository input" width="100%"></a>
-<br><strong>01 · Landing and repository input</strong>
-</td>
-<td width="50%" valign="top" align="center">
-<a href="submission/screenshots/02-health-overview.png"><img src="submission/screenshots/02-health-overview.png" alt="Doctor Dev repository profile and health overview" width="100%"></a>
-<br><strong>02 · Repository profile and health overview</strong>
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top" align="center">
-<a href="submission/screenshots/03-testpilot-evidence.png"><img src="submission/screenshots/03-testpilot-evidence.png" alt="TestPilot coverage evidence, testing gaps, routes, and test files" width="100%"></a>
-<br><strong>03 · TestPilot evidence and testing gaps</strong>
-</td>
-<td width="50%" valign="top" align="center">
-<a href="submission/screenshots/04-configdoctor-findings.png"><img src="submission/screenshots/04-configdoctor-findings.png" alt="ConfigDoctor configuration issues, ports, and environment variables" width="100%"></a>
-<br><strong>04 · ConfigDoctor findings</strong>
-</td>
-</tr>
-<tr>
-<td colspan="2" valign="top" align="center">
-<a href="submission/screenshots/05-final-health-report.png"><img src="submission/screenshots/05-final-health-report.png" alt="Doctor Dev final health report and export actions" width="70%"></a>
-<br><strong>05 · Final health report and export actions</strong>
-</td>
-</tr>
-</table>
+<details>
+<summary><strong>📸 01 · Landing and repository input</strong></summary>
+<br>
+
+[![Doctor Dev landing page and repository input](submission/screenshots/01-landing-and-repository-input.png)](submission/screenshots/01-landing-and-repository-input.png)
+
+</details>
+
+<details>
+<summary><strong>📊 02 · Repository profile and health overview</strong></summary>
+<br>
+
+[![Doctor Dev repository profile and health overview](submission/screenshots/02-health-overview.png)](submission/screenshots/02-health-overview.png)
+
+</details>
+
+<details>
+<summary><strong>🧪 03 · TestPilot evidence and testing gaps</strong></summary>
+<br>
+
+[![TestPilot coverage evidence, testing gaps, routes, and test files](submission/screenshots/03-testpilot-evidence.png)](submission/screenshots/03-testpilot-evidence.png)
+
+</details>
+
+<details>
+<summary><strong>⚙️ 04 · ConfigDoctor findings</strong></summary>
+<br>
+
+[![ConfigDoctor configuration issues, ports, and environment variables](submission/screenshots/04-configdoctor-findings.png)](submission/screenshots/04-configdoctor-findings.png)
+
+</details>
+
+<details>
+<summary><strong>📋 05 · Final health report and export actions</strong></summary>
+<br>
+
+[![Doctor Dev final health report and export actions](submission/screenshots/05-final-health-report.png)](submission/screenshots/05-final-health-report.png)
+
+</details>
 
 ---
 
@@ -593,7 +604,11 @@ The challenge asks builders to improve a developer workflow with repository-awar
 
 ### IBM Bob usage evidence
 
-These screenshots preserve the actual Bob task sequence: project planning, repository and architecture review, analyzer debugging, targeted fixes, and end-to-end validation. Select any image to open the full-resolution evidence.
+These screenshots preserve the actual Bob task sequence: project planning, repository and architecture review, analyzer debugging, targeted fixes, and end-to-end validation.
+
+<details>
+<summary><strong>🤖 Open the IBM Bob screenshot gallery (12 captures)</strong></summary>
+<br>
 
 <table>
 <tr>
@@ -617,6 +632,8 @@ These screenshots preserve the actual Bob task sequence: project planning, repos
 <td width="33%" align="center"><a href="submission/bob-usage/bob-session-12.png"><img src="submission/bob-usage/bob-session-12.png" alt="IBM Bob targeted analyzer fix plan" width="100%"></a><br><strong>12 · Targeted analyzer fixes</strong></td>
 </tr>
 </table>
+
+</details>
 
 Direct evidence: [all Bob screenshots](submission/bob-usage/) · [Bob task JSON export](submission/bob-task-fcbb69e7abf2f34a815ca5d7aa172b92-2026-09-26.json)
 
