@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="submission/doctor-dev-logo.png" alt="Doctor Dev logo" width="180">
+
 # 🩺 Doctor Dev
 
 ### Find what will break before your developers do.
