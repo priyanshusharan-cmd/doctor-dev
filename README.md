@@ -359,6 +359,18 @@ flowchart LR
 
 ---
 
+## Render deployment
+
+Production uses one Node web service for the dashboard and API. Run `npm run build`
+from the repository root, then `NODE_ENV=production npm start`. The dashboard uses
+`/api` on the same origin; `VITE_API_URL` is no longer needed.
+
+See [the Render deployment guide](docs/render-deployment.md) for the exact settings
+and migration steps for the existing Static Site and backend. A new deployment
+can use the included `render.yaml` Blueprint.
+
+---
+
 ## 🏗️ Architecture
 
 ```mermaid

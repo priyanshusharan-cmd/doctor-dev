@@ -1,60 +1,19 @@
-import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 import dotenv from 'dotenv';
-import { analysisRouter } from './routes/analysisRoutes';
+import { createApp } from './app';
 
 dotenv.config();
 
-const app = express();
-const PORT = parseInt(process.env.PORT ?? '3001', 10);
+const frontendDirectory = path.resolve(__dirname, '../../frontend/dist');
+if (process.env.NODE_ENV === 'production' && !existsSync(path.join(frontendDirectory, 'index.html'))) {
+  throw new Error('Frontend build missing. Run npm run build from the repository root before starting.');
+}
 
-// ─── Middleware ───────────────────────────────────────────────────────────────
-app.use(cors({
-  origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
-  methods: ['GET', 'POST', 'DELETE'],
-  allowedHeaders: ['Content-Type'],
-}));
-app.use(express.json());
-
-// ─── Health ───────────────────────────────────────────────────────────────────
-app.get('/api/health', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    service: 'doctor-dev',
-    version: '0.2.0',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// ─── Routes ───────────────────────────────────────────────────────────────────
-app.use('/api', analysisRouter);
-
-// ─── Root ──────────────────────────────────────────────────────────────────────
-app.get('/', (_req: Request, res: Response) => {
-  res.json({
-    status: 'ok',
-    message: 'Doctor Dev backend is running'
-  });
-});
-
-// ─── 404 ─────────────────────────────────────────────────────────────────────
-app.use((_req: Request, res: Response) => {
-  res.status(404).json({ error: 'Not found' });
-});
-
-// ─── Error handler ────────────────────────────────────────────────────────────
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('[doctor-dev]', err.message);
-  res.status(500).json({ error: 'Internal server error', detail: err.message });
-});
-
-// ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[doctor-dev] Backend running at http://0.0.0.0:${PORT}`);
-  console.log(`[doctor-dev] Health:   GET  http://localhost:${PORT}/api/health`);
-  console.log(`[doctor-dev] Analyze:  POST http://localhost:${PORT}/api/analyze`);
-  console.log(`[doctor-dev] Result:   GET  http://localhost:${PORT}/api/analysis/:id`);
+const app = createApp(frontendDirectory);
+const port = parseInt(process.env.PORT ?? '3001', 10);
+app.listen(port, '0.0.0.0', () => {
+  process.stdout.write(`${JSON.stringify({ service: 'doctor-dev', event: 'listening', port })}\n`);
 });
 
 export default app;

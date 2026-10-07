@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: doctor-dev
+    runtime: node
+    plan: free
+    branch: main
+    buildCommand: npm ci --include=dev && npm ci --include=dev --prefix backend && npm ci --include=dev --prefix frontend && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22

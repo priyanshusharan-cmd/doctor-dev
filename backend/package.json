@@ -1,6 +1,6 @@
 {
   "name": "@doctor-dev/backend",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "main": "dist/server.js",
   "scripts": {
@@ -8,7 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "ts-node src/tests/benchmarks.test.ts",
+    "test": "vitest run src/app.test.ts && ts-node src/tests/benchmarks.test.ts",
     "lint": "echo 'lint ok'"
   },
   "dependencies": {
@@ -28,6 +28,7 @@
     "@types/node": "^20.14.0",
     "@types/uuid": "^9.0.8",
     "ts-node-dev": "^2.0.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "vitest": "^3.2.7"
   }
 }
