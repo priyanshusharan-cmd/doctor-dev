@@ -8,7 +8,7 @@ import { detectPrimaryEcosystem, analyzeRepository } from '../analyzers/reposito
 import { analyzeEnvVars } from '../analyzers/configDoctor';
 import { PythonAdapter } from '../analyzers/languages/python';
 import { calculateHealthScore } from '../services/prioritizationService';
-import type { TestGap, TestProfile, CoverageInfo } from '../types';
+import type { TestGap, TestMapping, TestProfile, CoverageInfo } from '../types';
 
 async function main() {
   console.log('--- Running DoctorDev Architecture & Benchmark Regression Tests ---');
@@ -143,7 +143,15 @@ def test_login_failure():
       },
     ];
 
-    const score = calculateHealthScore(50, unconfirmedGaps, [], testProfile);
+    // 50 production files: 45 imported by tests, 5 whose tests could not be traced
+    const mappings: TestMapping[] = Array.from({ length: 50 }, (_, i) => ({
+      sourceFile: `lib/mod${i}.js`,
+      relatedTests: i < 45 ? [`test/mod${i}.test.js`] : [],
+      coverageStatus: i < 45 ? 'DIRECTLY_TESTED' : 'NOT_ENOUGH_EVIDENCE',
+      confidence: i < 45 ? 0.95 : 0.35,
+      evidence: [],
+    }));
+    const score = calculateHealthScore({ mappings, symbols: [], routes: [], testGaps: unconfirmedGaps, configIssues: [], testProfile });
     assert.ok(score.testing >= 75, `Testing score should remain high for mature repos with low-confidence gaps (got ${score.testing})`);
     assert.ok(score.overall >= 75, `Overall score should not drop to F (got ${score.overall} / ${score.grade})`);
     console.log(`✓ Test 5 passed: Mature repos with low-confidence gaps score accurately (${score.overall} / ${score.grade}).`);
@@ -360,18 +368,20 @@ def test_login_failure():
 
     const testProf = analyzeTests(mockRepo, profile.testFiles, profile.testFrameworkEvidence);
     const { buildTestMappings, findTestingGaps } = require('../analyzers/testPilot');
-    const mappings = buildTestMappings(profile.sourceFiles, testProf);
-    
-    // Provide a mocked source contents map
-    const sourceContents = new Map();
-    for (const file of profile.sourceFiles) {
-      sourceContents.set(file, fs.readFileSync(path.join(mockRepo, file), 'utf8'));
-    }
+    const { buildImportGraph, createResolver, reachFromTests } = require('../analyzers/importGraph');
+    const files = [...profile.testFiles, ...profile.sourceFiles];
+    const read = (rel: string) => fs.readFileSync(path.join(mockRepo, rel), 'utf8');
+    const graph = buildImportGraph(files, read, await createResolver(mockRepo, new Set(files)));
+    const reach = reachFromTests(graph, profile.testFiles, (f: string) => f.startsWith('lib/'));
+    const testContents = new Map(profile.testFiles.map((t) => [t, read(t)]));
+    const mappings = buildTestMappings({
+      sourceFiles: ['lib/adapters/http.js'], testFiles: profile.testFiles, reach,
+      testCorpus: [...testContents.values()].join('\n').toLowerCase(), importsTraceable: true,
+    });
+    assert.strictEqual(mappings[0].coverageStatus, 'DIRECTLY_TESTED', 'A file imported by a test must be directly tested');
 
-    const gaps = findTestingGaps(symbols, routes, mappings, testProf, sourceContents);
-    
-    const unmappedGaps = gaps.filter((g: any) => g.category === 'partial_test');
-    assert.strictEqual(unmappedGaps.length, 0, 'Must not report properly imported functions as partial_test gaps');
+    const gaps = findTestingGaps({ symbols, routes, mappings, testProfile: testProf, testContents });
+    assert.strictEqual(gaps.length, 0, `Properly imported functions must not produce gaps, got: ${gaps.map((g: any) => g.title).join(', ')}`);
 
     fs.rmSync(mockRepo, { recursive: true, force: true });
     console.log('✓ Test 14 passed: Comprehensive false-positive prevention works for large repos.');

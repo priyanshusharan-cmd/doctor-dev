@@ -351,6 +351,8 @@ export function categorizeEnvVar(name: string): EnvVarCategory {
     'P', 'S', '_',
   ]);
   if (OS_SHELL_SET.has(upper)) return 'OS_SHELL';
+  // Interpreter and virtualenv settings (PYTHONPATH, PYTHONSTARTUP, VIRTUAL_ENV, …)
+  if (upper.startsWith('PYTHON') || upper === 'VIRTUAL_ENV' || upper.startsWith('CONDA_') || upper.startsWith('PIP_')) return 'OS_SHELL';
 
   // 3. Node Runtime
   if (upper.startsWith('NODE_') || upper.startsWith('UV_') || upper === 'V8_OPTIONS') {
@@ -441,6 +443,10 @@ export function categorizeEnvVar(name: string): EnvVarCategory {
     upper === 'PORT' ||
     upper === 'HOST' ||
     upper === 'NO_PROXY' ||
+    // Variables that build tools and hosts define themselves
+    upper === 'PUBLIC_URL' || upper === 'GENERATE_SOURCEMAP' || upper === 'BROWSER' || upper === 'FAST_REFRESH' ||
+    upper === 'NEXT_RUNTIME' || upper.startsWith('VERCEL_') || upper.startsWith('NETLIFY') || upper.startsWith('RENDER_') ||
+    upper === 'HEROKU_APP_NAME' || upper.startsWith('FLY_') || upper.startsWith('RAILWAY_') ||
     upper === 'HTTP_PROXY' ||
     upper === 'HTTPS_PROXY'
   ) {

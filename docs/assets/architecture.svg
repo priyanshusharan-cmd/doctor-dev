@@ -141,21 +141,21 @@
 
     <rect class="node" x="560" y="280" width="280" height="80" rx="16" fill="#0b1324" stroke="#8b5cf6" stroke-width="1.6" style="animation-delay:1.2s"/>
     <text class="title" x="580" y="312">🌳  Language adapters</text>
-    <text class="sub" x="580" y="336">ts-morph AST · Python · routes</text>
+    <text class="sub" x="580" y="336">import graph · ts-morph AST · Python</text>
 
     <rect class="node" x="540" y="410" width="150" height="90" rx="16" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1.8" style="animation-delay:1.5s"/>
     <text class="title" x="558" y="442">🧪 TestPilot</text>
-    <text class="sub" x="558" y="464">test mapping</text>
-    <text class="sub" x="558" y="482">gap detection</text>
+    <text class="sub" x="558" y="464">import tracing</text>
+    <text class="sub" x="558" y="482">untested code</text>
 
     <rect class="node" x="710" y="410" width="150" height="90" rx="16" fill="#082f49" stroke="#22d3ee" stroke-width="1.8" style="animation-delay:1.7s"/>
     <text class="title" x="726" y="442">⚙️ ConfigDoctor</text>
     <text class="sub" x="726" y="464">env · Docker · CI</text>
-    <text class="sub" x="726" y="482">ports · README</text>
+    <text class="sub" x="726" y="482">secrets · README</text>
 
     <rect class="node" x="560" y="550" width="280" height="80" rx="16" fill="#0b1324" stroke="#22c55e" stroke-width="1.6" style="animation-delay:2s"/>
     <text class="title" x="580" y="582">📊  Prioritization + score</text>
-    <text class="sub" x="580" y="606">severity × confidence → grade A–F</text>
+    <text class="sub" x="580" y="606">explained points → grade A–F</text>
 
     <!-- Right column -->
     <rect x="920" y="150" width="240" height="80" rx="16" fill="#1c1206" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="7 6"/>

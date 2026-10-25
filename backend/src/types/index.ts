@@ -160,6 +160,8 @@ export interface TestMapping {
   coverageStatus: CoverageStatus;
   /** 0–1 confidence that the mapping is correct */
   confidence: number;
+  /** Production modules between the test and this file (1 = imported directly) */
+  depth?: number;
   evidence: string[];
 }
 
@@ -196,6 +198,8 @@ export interface TestGap {
   /** Relative path */
   filePath: string;
   symbolName?: string;
+  /** Important exported symbols in the file, for file-level gaps */
+  symbolNames?: string[];
   lineStart?: number;
   /** Why is this severity assigned? */
   reason: string;
@@ -327,6 +331,17 @@ export interface ConfigHealth {
 
 export type HealthState = 'healthy' | 'needs_attention' | 'critical';
 
+export type ScoreDimension = 'testing' | 'configuration' | 'security';
+
+/** One explained contribution to a dimension score. */
+export interface ScoreFactor {
+  dimension: ScoreDimension;
+  label: string;
+  /** Points this factor moved the dimension score (negative = deduction) */
+  points: number;
+  detail?: string;
+}
+
 export interface HealthScore {
   overall: number;
   testing: number;
@@ -334,6 +349,21 @@ export interface HealthScore {
   security: number;
   state: HealthState;
   grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  /** Why each dimension has its value, largest deductions first */
+  factors: ScoreFactor[];
+}
+
+/** How much of the production code has test evidence. */
+export interface TestEvidenceSummary {
+  productionFiles: number;
+  directlyTested: number;
+  indirectlyTested: number;
+  partiallyTested: number;
+  untested: number;
+  /** Importance-weighted share of production code with test evidence, 0–1 */
+  weightedRatio: number;
+  routes: number;
+  untestedRoutes: number;
 }
 
 // ─── Priority Finding ─────────────────────────────────────────────────────────
@@ -367,6 +397,9 @@ export interface AnalysisResult {
   priorityFindings: PriorityFinding[];
   healthScore: HealthScore;
   testRunResult?: TestRunResult;
+  testEvidence?: TestEvidenceSummary;
+  /** Non-fatal problems hit during analysis (a stage that failed and was skipped) */
+  warnings?: string[];
   scannedAt: string;
 }
 

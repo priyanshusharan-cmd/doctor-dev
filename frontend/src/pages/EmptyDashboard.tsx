@@ -58,25 +58,25 @@ export default function EmptyDashboard() {
           <div className="flex items-center gap-2 mb-4">
             <span className="flex items-center gap-1.5 text-xs font-semibold text-blue-400 bg-blue-950/50 border border-blue-800/50 px-3 py-1 rounded-full">
               <Zap className="w-3 h-3" />
-              AI-Powered Analysis
+              Evidence-based analysis
             </span>
           </div>
 
           <h1 className="text-3xl sm:text-4xl font-black text-white mb-3 leading-tight">
-            Your AI doctor for<br />
-            <span className="text-gradient-blue">software health.</span>
+            A health check for<br />
+            <span className="text-gradient-blue">your whole repository.</span>
           </h1>
           <p className="text-base text-gray-400 leading-relaxed max-w-2xl mb-6">
-            Point Doctor Dev at any repository. It diagnoses testing gaps, catches configuration
-            problems, and tells you exactly what will break — before your developers find out the hard way.
+            Point Doctor Dev at a repository. It traces which code your tests actually load, finds the files
+            and API routes they never reach, and catches configuration drift — with the evidence behind every finding.
           </p>
 
           {/* Stats */}
           <div className="flex flex-wrap items-center gap-6">
             {[
               { value: '2', label: 'Analysis engines' },
-              { value: 'AST', label: 'Code analysis' },
-              { value: '100%', label: 'Real file scanning' },
+              { value: 'Imports', label: 'Traced from every test' },
+              { value: 'A–F', label: 'Explained score' },
             ].map(({ value, label }) => (
               <div key={label}>
                 <span className="text-2xl font-bold text-white tabular-nums">{value}</span>
@@ -96,10 +96,10 @@ export default function EmptyDashboard() {
           title="TestPilot"
           subtitle="Finds what your test suite forgot to cover"
           bullets={[
-            'Maps every function to its test coverage',
-            'Detects missing error paths & edge cases',
-            'Flags untested auth & business logic',
-            'Generates test code in your framework',
+            'Traces test imports to the code they load',
+            'Finds untested files and API routes',
+            'Flags auth and payment code with no failure tests',
+            'Writes starter test skeletons in your framework',
           ]}
         />
         <FeatureCard
@@ -109,10 +109,10 @@ export default function EmptyDashboard() {
           title="ConfigDoctor"
           subtitle="Finds the 'works on my machine' problems"
           bullets={[
-            'Detects undocumented env variables',
-            'Compares ports across Docker, CI & README',
-            'Checks CI vs local environment parity',
-            'Scans for accidentally exposed secrets',
+            'Finds undocumented environment variables',
+            'Checks Docker, Compose, CI & README for drift',
+            'Catches CI running unsupported Node versions',
+            'Finds committed .env files and hardcoded keys',
           ]}
         />
       </div>
@@ -126,10 +126,10 @@ export default function EmptyDashboard() {
         <div className="flex items-start gap-2 overflow-x-auto pb-2">
           {[
             { n: 1, label: 'Scan', sub: 'File & stack detection', color: 'text-blue-400 border-blue-800/60 bg-blue-950/30' },
-            { n: 2, label: 'Analyze', sub: 'AST + route mapping', color: 'text-purple-400 border-purple-800/60 bg-purple-950/30' },
+            { n: 2, label: 'Trace', sub: 'Test → code imports', color: 'text-purple-400 border-purple-800/60 bg-purple-950/30' },
             { n: 3, label: 'Detect', sub: 'Gaps & issues', color: 'text-orange-400 border-orange-800/60 bg-orange-950/30' },
             { n: 4, label: 'Explain', sub: 'Why it matters', color: 'text-yellow-400 border-yellow-800/60 bg-yellow-950/30' },
-            { n: 5, label: 'Generate', sub: 'Test suggestions', color: 'text-cyan-400 border-cyan-800/60 bg-cyan-950/30' },
+            { n: 5, label: 'Generate', sub: 'Test skeletons', color: 'text-cyan-400 border-cyan-800/60 bg-cyan-950/30' },
             { n: 6, label: 'Report', sub: 'Health score', color: 'text-green-400 border-green-800/60 bg-green-950/30' },
           ].map((step, i, arr) => (
             <div key={step.n} className="flex items-start gap-2 flex-shrink-0">
@@ -148,10 +148,10 @@ export default function EmptyDashboard() {
       <div className="flex items-center gap-3 p-4 rounded-xl border border-blue-900/40 bg-blue-950/10">
         <Shield className="w-5 h-5 text-blue-400 flex-shrink-0" />
         <p className="text-sm text-gray-400">
-          Enter a repository path above and click{' '}
-          <span className="text-gray-200 font-semibold">Analyze Repository</span>
-          , or try the{' '}
-          <span className="text-gray-200 font-semibold">Demo Repository</span>
+          Enter a GitHub URL or local path above and click{' '}
+          <span className="text-gray-200 font-semibold">Analyze</span>
+          , or open the menu and choose{' '}
+          <span className="text-gray-200 font-semibold">Try Demo</span>
           {' '}to see Doctor Dev in action.
         </p>
       </div>

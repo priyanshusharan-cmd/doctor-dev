@@ -29,9 +29,14 @@ backend/src/
 ├── analyzers/
 │   ├── repositoryAnalyzer.ts  File scanner + tech detection
 │   ├── codeAnalyzer.ts        AST symbol + route extraction (ts-morph)
-│   ├── configAnalyzer.ts      Test profile + env var analysis
-│   ├── testPilot.ts           Test gap detection + generation
-│   └── configDoctor.ts        Config issue detection
+│   ├── importance.ts          Word-level auth/payment/DB importance rules
+│   ├── importGraph.ts         ESM/CJS/Python import graph + test reach
+│   ├── configAnalyzer.ts      Test profile + env var categories
+│   ├── testPilot.ts           Test evidence mapping, gaps, test skeletons
+│   ├── configDoctor.ts        Env, ports, Docker, docs, scripts (service vs library)
+│   ├── ciAnalyzer.ts          CI install/test/Node-version checks across workflows
+│   ├── securityScanner.ts     Committed .env files + hardcoded keys
+│   └── languages/             JavaScript/TypeScript and Python adapters
 ├── runners/
 │   └── testRunner.ts          Controlled test execution (execa)
 ├── models/
@@ -46,12 +51,12 @@ The pipeline runs in 6 stages:
 
 1. **Scanning** — fast-glob discovers all source, test, and config files
 2. **Analyzing code** — ts-morph extracts symbols and routes via AST
-3. **Analyzing tests** — test files are parsed; test-to-source mappings built
+3. **Analyzing tests** — an import graph is built from every source and test file; each production file is mapped to the tests that load it (directly, indirectly, or by name/URL), and untested files and routes become gaps
 4. **Analyzing config** — env vars, Docker, CI, and README are inspected
-5. **Prioritizing** — gaps + issues are ranked; health score calculated
+5. **Prioritizing** — gaps + issues are ranked; the health score is computed with every deduction recorded as a factor (see "How the score works" in the README)
 6. **Complete** — result stored in memory; frontend receives it on next poll
 
-Each stage updates the `Analysis.status` field, which the frontend reads via polling.
+Each stage updates the `Analysis.status` field, which the frontend reads via polling. Stages after scanning are isolated: if one fails, it is skipped, recorded in `result.warnings`, and shown in the UI instead of failing the whole analysis.
 
 ### Security Constraints
 

@@ -1,39 +1,60 @@
-import path from 'path';
-import { randomUUID } from 'node:crypto';
+import path from 'node:path';
+import fs from 'node:fs';
 import fg from 'fast-glob';
 import { readFileSafe, fileExists, isSecretName } from '../utils/security';
+import { categorizeEnvVar, stripComments } from './configAnalyzer';
+import { getSourceType } from './codeAnalyzer';
+import { analyzeCi } from './ciAnalyzer';
+import { analyzeSecurity } from './securityScanner';
+import { issue } from './issue';
 import type {
   RepositoryProfile,
   ConfigHealth,
   ConfigIssue,
   EnvVarInfo,
   PortMention,
-  IssueSeverity,
-  IssueCategory,
+  RouteInfo,
 } from '../types';
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+export { analyzeCi } from './ciAnalyzer';
 
-function issue(
-  severity: IssueSeverity,
-  confidence: number,
-  category: IssueCategory,
-  title: string,
-  description: string,
-  recommendedFix: string,
-  extras: Partial<ConfigIssue> = {},
-): ConfigIssue {
-  return {
-    id: randomUUID(),
-    severity,
-    confidence,
-    category,
-    title,
-    description,
-    evidence: [],
-    recommendedFix,
-    ...extras,
-  };
+// ─── Context ──────────────────────────────────────────────────────────────────
+
+/** Frameworks whose presence in production dependencies means the repo deploys a server. */
+const SERVER_DEPENDENCIES = ['express', 'fastify', 'koa', '@nestjs/core', 'next', 'nuxt', '@hapi/hapi', 'hapi', '@remix-run/node', '@sveltejs/kit', 'hono', 'restify'];
+const PYTHON_SERVER_RE = /^\s*(?:flask|django|fastapi|starlette|aiohttp|tornado|sanic|uvicorn|gunicorn)\b/im;
+
+/**
+ * Whether the repository is a deployable service (rather than a library). Several checks —
+ * `.env.example`, documented ports, undocumented variables — only make sense for services.
+ */
+export function detectService(repoPath: string, profile: RepositoryProfile, routes: RouteInfo[], portMentions: PortMention[]): boolean {
+  if (profile.configFiles.some((f) => /(^|\/)dockerfile$/i.test(f))) return true;
+  if (routes.some((r) => r.sourceType === 'production')) return true;
+  if (SERVER_DEPENDENCIES.some((d) => profile.dependencies[d])) return true;
+  const requirements = readFileSafe(path.join(repoPath, 'requirements.txt')) ?? '';
+  if (PYTHON_SERVER_RE.test(requirements)) return true;
+  return portMentions.some((m) => m.role !== 'docker_expose' && getSourceType(m.filePath) === 'production');
+}
+
+/** Lower-cased text of the repository's documentation (README, docs/, CONTRIBUTING, …). */
+async function readDocs(repoPath: string): Promise<string> {
+  const files = await fg(['*.{md,mdx,rst,txt}', 'docs/**/*.{md,mdx,rst}', 'doc/**/*.{md,mdx,rst}', '**/README*'], {
+    cwd: repoPath, caseSensitiveMatch: false, ignore: ['**/node_modules/**', '**/.git/**', '**/CHANGELOG*', '**/HISTORY*'],
+    deep: 4, suppressErrors: true,
+  });
+  let text = '';
+  for (const rel of files.slice(0, 80)) {
+    text += `\n${readFileSafe(path.join(repoPath, rel), 300_000) ?? ''}`;
+    if (text.length > 3_000_000) break;
+  }
+  return text.toLowerCase();
+}
+
+/** README at the repository root, following symlinks (some repos link it into a package). */
+function findReadme(repoPath: string): string | undefined {
+  return ['README.md', 'readme.md', 'Readme.md', 'README.MD', 'README.rst', 'README.txt', 'README']
+    .find((name) => fs.existsSync(path.join(repoPath, name)));
 }
 
 // ─── ENV var analysis ─────────────────────────────────────────────────────────
@@ -51,34 +72,39 @@ const VITE_BUILTIN_ENV = new Set(['MODE', 'DEV', 'PROD', 'SSR', 'BASE_URL']);
 const ENV_DEFINE_NAME_RE = /^(?:export\s+)?([A-Z_][A-Z0-9_]*)(?:\s*=.*)?$/;
 const ENV_TEMPLATE_GLOBS = ['**/.env.example', '**/.env.sample', '**/.env.template', '**/.env.defaults'];
 const ENV_GLOB_IGNORE = ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**'];
+/** Files that set variables for the app at deploy time. */
+const DEPLOY_CONFIG_GLOBS = ['**/docker-compose*.{yml,yaml}', '**/compose*.{yml,yaml}', '**/Dockerfile*', '.github/workflows/*.{yml,yaml}', '**/*.{tf,toml}', 'render.yaml', 'fly.toml', 'app.json', '**/k8s/**/*.{yml,yaml}', '**/helm/**/*.{yml,yaml}'];
 
 function parseEnvNames(content: string): string[] {
   return content
     .split('\n')
-    .map((l) => l.trim())
+    .map((l) => l.trim().replace(/^#\s*(?=[A-Z_][A-Z0-9_]*\s*=)/, ''))
     .filter((l) => l && !l.startsWith('#'))
-    .map((l) => {
-      const m = ENV_DEFINE_NAME_RE.exec(l);
-      return m ? m[1] : null;
-    })
+    .map((l) => ENV_DEFINE_NAME_RE.exec(l)?.[1] ?? null)
     .filter((n): n is string => n !== null);
 }
 
-import { categorizeEnvVar, stripComments } from './configAnalyzer';
+export interface EnvAnalysisOptions {
+  /** Libraries document configuration in prose, so missing templates matter less. */
+  isService?: boolean;
+  /** Lower-cased documentation text; a variable named there counts as documented. */
+  docsText?: string;
+}
 
+/** Compare environment variables read by code with templates, docs, and deploy config. */
 export async function analyzeEnvVars(
   repoPath: string,
   sourceFiles: string[],
+  options: EnvAnalysisOptions = {},
 ): Promise<{ envVars: EnvVarInfo[]; issues: ConfigIssue[] }> {
+  const isService = options.isService ?? true;
+  const docsText = options.docsText ?? '';
   const defined = new Map<string, Set<string>>();
   const used = new Map<string, Set<string>>();
   const defaults = new Set<string>();
 
   // Templates may live next to each package in a monorepo (e.g. backend/.env.example).
-  const envFiles = await fg(ENV_TEMPLATE_GLOBS, {
-    cwd: repoPath, absolute: false, dot: true, ignore: ENV_GLOB_IGNORE, deep: 4,
-  });
-
+  const envFiles = await fg(ENV_TEMPLATE_GLOBS, { cwd: repoPath, dot: true, ignore: ENV_GLOB_IGNORE, deep: 4, suppressErrors: true });
   for (const relPath of envFiles) {
     const content = readFileSafe(path.join(repoPath, relPath));
     if (!content) continue;
@@ -90,7 +116,7 @@ export async function analyzeEnvVars(
     }
   }
 
-  for (const relPath of sourceFiles.slice(0, 300)) {
+  for (const relPath of sourceFiles.slice(0, 1_000)) {
     const content = readFileSafe(path.join(repoPath, relPath));
     if (!content) continue;
     for (const pattern of ENV_USAGE_PATTERNS) {
@@ -109,55 +135,49 @@ export async function analyzeEnvVars(
     }
   }
 
-  const allNames = new Set([...defined.keys(), ...used.keys()]);
+  // Deploy configuration that sets the variable also documents it.
+  const deployFiles = await fg(DEPLOY_CONFIG_GLOBS, { cwd: repoPath, dot: true, ignore: ENV_GLOB_IGNORE, deep: 5, suppressErrors: true });
+  const deployText = deployFiles.slice(0, 60).map((f) => readFileSafe(path.join(repoPath, f), 300_000) ?? '').join('\n');
+
   const envVars: EnvVarInfo[] = [];
   const issues: ConfigIssue[] = [];
-
-  for (const name of allNames) {
+  for (const name of new Set([...defined.keys(), ...used.keys()])) {
     const def = Array.from(defined.get(name) ?? []);
     const usedIn = Array.from(used.get(name) ?? []);
     const secret = isSecretName(name);
     const category = categorizeEnvVar(name);
+    envVars.push({ name, category, definedIn: def, usedIn, hasDefault: defaults.has(name), isSecret: secret });
 
-    envVars.push({
-      name,
-      category,
-      definedIn: def,
-      usedIn,
-      hasDefault: defaults.has(name),
-      isSecret: secret,
-    });
-
-    // Only report 'undocumented environment variable' when it appears to be application/configuration-specific.
-    // OS, SHELL, NODE_RUNTIME, CI/CD, TEST, BENCHMARK, and single/two-letter variables are never reported.
+    // Only application, database, and service variables need documenting — OS, runtime,
+    // CI, test, and tooling variables are provided by the environment.
     const isAppSpecific = category === 'APPLICATION' || category === 'DATABASE' || category === 'SERVICE';
-    const isRuntimeOrSystem = category === 'OS_SHELL' || category === 'NODE_RUNTIME' || category === 'CI_CD' || category === 'TEST' || category === 'BENCHMARK' || category === 'TOOLING';
+    if (usedIn.length === 0 || def.length > 0 || defaults.has(name) || !isAppSpecific) continue;
+    const nameRe = new RegExp(`\\b${name.toLowerCase()}\\b`);
+    if (nameRe.test(docsText) || new RegExp(`\\b${name}\\b`).test(deployText)) continue;
 
-    if (usedIn.length > 0 && def.length === 0 && !defaults.has(name) && isAppSpecific && !isRuntimeOrSystem) {
-      issues.push(issue(
-        secret ? 'high' : 'medium',
-        0.85,
-        'environment',
-        `Undocumented application environment variable: ${name}`,
-        `\`${name}\` is referenced in application code but not defined or documented in any .env.example or template file.`,
-        `Add \`${name}=${secret ? '<secret>' : '<value>'}\` to your .env.example file.`,
-        {
-          evidence: [`Used in: ${usedIn.slice(0, 3).join(', ')}`],
-          whyDoctorDevBelievesThis: `Found references to ${name} across application files (${usedIn.slice(0, 2).join(', ')}), but no definition in configuration templates.`,
-          whyUncertain: defaults.has(name) ? 'May have runtime fallback in application code.' : undefined,
-        },
-      ));
-    }
+    issues.push(issue(
+      isService ? (secret ? 'high' : 'medium') : 'low',
+      isService ? 0.85 : 0.6,
+      'environment',
+      `Undocumented application environment variable: ${name}`,
+      `\`${name}\` is read by ${usedIn.slice(0, 2).join(', ')} but is not in any .env template, deploy configuration, or documentation.`,
+      isService ? `Add \`${name}=${secret ? '<secret>' : '<value>'}\` to .env.example.` : `Document \`${name}\` in the README.`,
+      {
+        evidence: [`Used in: ${usedIn.slice(0, 3).join(', ')}`],
+        whyDoctorDevBelievesThis: `Searched .env templates, docker/CI/deploy files, and ${docsText ? 'the documentation' : 'the README'} for "${name}".`,
+      },
+    ));
   }
 
   return { envVars: envVars.sort((a, b) => a.name.localeCompare(b.name)), issues };
 }
 
-// ─── Port analysis ────────────────────────────────────────────────────────────
+// ─── Ports & Docker ───────────────────────────────────────────────────────────
 
 const BACKLOG_SET = new Set([128, 256, 511, 512, 1024, 2048, 4096]);
 const PORT_RANGE = { min: 80, max: 65535 };
 
+/** Find listen/EXPOSE/PORT-fallback ports and check Docker and Compose files. */
 export async function analyzePortsAndDocker(
   repoPath: string,
   profile: RepositoryProfile,
@@ -167,174 +187,91 @@ export async function analyzePortsAndDocker(
   const seen = new Set<string>();
 
   const filesToScan = [
-    ...profile.sourceFiles,
+    ...profile.sourceFiles.filter((f) => getSourceType(f) === 'production'),
     ...profile.configFiles,
-  ].slice(0, 150);
+  ].slice(0, 1_000);
+
+  const record = (port: number, relPath: string, line: string, idx: number, role: PortMention['role']): void => {
+    if (port < PORT_RANGE.min || port > PORT_RANGE.max) return;
+    const key = `${relPath}:${port}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    mentions.push({ port, filePath: relPath, context: line.trim().slice(0, 80), line: idx + 1, role, isServerListen: true });
+  };
 
   for (const relPath of filesToScan) {
-    const rawContent = readFileSafe(path.join(repoPath, relPath));
+    const rawContent = readFileSafe(path.join(repoPath, relPath), 500_000);
     if (!rawContent) continue;
-
     const isDocker = /dockerfile|docker-compose/i.test(relPath);
     const content = isDocker ? rawContent : stripComments(rawContent);
-    const lines = content.split('\n');
-
-    lines.forEach((line, idx) => {
-      // Exclude lines with RFC, backlog, timeout, status codes
-      if (/\b(?:rfc|status|bytes|timeout|delay|backlog|sample|max)\b/i.test(line)) return;
-
-      // 1. Docker EXPOSE
+    content.split('\n').forEach((line, idx) => {
+      if (line.length > 1_000 || /\b(?:rfc|status|bytes|timeout|delay|backlog|sample|max)\b/i.test(line)) return;
       const exp = line.match(/^\s*EXPOSE\s+(\d{2,5})/i);
-      if (exp) {
-        const port = parseInt(exp[1], 10);
-        if (port >= PORT_RANGE.min && port <= PORT_RANGE.max) {
-          const key = `${relPath}:${port}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            mentions.push({
-              port,
-              filePath: relPath,
-              context: line.trim().slice(0, 80),
-              line: idx + 1,
-              role: 'docker_expose',
-              isServerListen: true,
-            });
-          }
-        }
-      }
-
-      // 2. Server listen
+      if (exp) record(parseInt(exp[1], 10), relPath, line, idx, 'docker_expose');
       const lis = line.match(/\.listen\s*\(\s*(?:\{\s*port:\s*)?(\d{2,5})/i);
-      if (lis) {
-        const port = parseInt(lis[1], 10);
-        if (port >= PORT_RANGE.min && port <= PORT_RANGE.max && !BACKLOG_SET.has(port)) {
-          const key = `${relPath}:${port}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            mentions.push({
-              port,
-              filePath: relPath,
-              context: line.trim().slice(0, 80),
-              line: idx + 1,
-              role: 'server_listen',
-              isServerListen: true,
-            });
-          }
-        }
-      }
-
-      // 3. Env fallback
+      if (lis && !BACKLOG_SET.has(parseInt(lis[1], 10))) record(parseInt(lis[1], 10), relPath, line, idx, 'server_listen');
       const envPort = line.match(/process\.env\.PORT\s*(?:\|\||\?\?)\s*['"`]?(\d{2,5})/i);
-      if (envPort) {
-        const port = parseInt(envPort[1], 10);
-        if (port >= PORT_RANGE.min && port <= PORT_RANGE.max) {
-          const key = `${relPath}:${port}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            mentions.push({
-              port,
-              filePath: relPath,
-              context: line.trim().slice(0, 80),
-              line: idx + 1,
-              role: 'env_fallback',
-              isServerListen: true,
-            });
-          }
-        }
-      }
+      if (envPort) record(parseInt(envPort[1], 10), relPath, line, idx, 'env_fallback');
     });
   }
 
-  // Detect genuine port conflicts between server listen ports and docker expose
-  const appListenPorts = mentions
-    .filter((m) => m.isServerListen && (m.role === 'server_listen' || m.role === 'env_fallback'))
-    .map((m) => m.port);
-  const dockerExposePorts = mentions
-    .filter((m) => m.role === 'docker_expose')
-    .map((m) => m.port);
-
-  const appPortSet = new Set(appListenPorts);
-
-  // Docker-specific checks
-  const dockerfiles = profile.configFiles.filter((f) =>
-    /dockerfile$/i.test(f) || /docker-compose\.(yml|yaml)$/.test(f)
-  );
+  const appPorts = new Set(mentions.filter((m) => m.role === 'server_listen' || m.role === 'env_fallback').map((m) => m.port));
+  const dockerfiles = profile.configFiles.filter((f) => /dockerfile$/i.test(f) || /docker-compose\.(yml|yaml)$/.test(f));
 
   for (const df of dockerfiles) {
     const content = readFileSafe(path.join(repoPath, df));
     if (!content) continue;
+    const nonComment = content.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
 
-    // Strip comment lines so patterns don't match in comments
-    const nonCommentLines = content.split('\n').filter((l) => !l.trimStart().startsWith('#'));
-    const nonCommentContent = nonCommentLines.join('\n');
-
-    // Check: Dockerfile uses npm install instead of npm ci
     if (/dockerfile$/i.test(df)) {
-      if (!nonCommentContent.includes('npm ci') && /npm\s+install/.test(nonCommentContent)) {
+      if (!nonComment.includes('npm ci') && /npm\s+install/.test(nonComment)) {
         issues.push(issue(
           'low', 0.7, 'docker',
-          `Dockerfile uses \`npm install\` instead of \`npm ci\``,
-          `In \`${df}\`, using \`npm install\` in production Docker images can produce non-deterministic builds. Prefer \`npm ci\`.`,
-          `Replace \`npm install\` with \`npm ci\` in your Dockerfile.`,
+          'Dockerfile uses `npm install` instead of `npm ci`',
+          `\`npm install\` in \`${df}\` can resolve different versions than the lockfile. \`npm ci\` installs exactly what is locked.`,
+          'Replace `npm install` with `npm ci` in the Dockerfile.',
           { filePath: df, evidence: ['RUN npm install found in Dockerfile'] },
         ));
       }
-
-      // Check: EXPOSE port matches a port the application listens on
-      const exposeMatch = nonCommentContent.match(/^EXPOSE\s+(\d+)/m);
-      if (exposeMatch) {
-        const exposedPort = parseInt(exposeMatch[1], 10);
-        const appPort = appListenPorts[0];
-        if (appPort && !appPortSet.has(exposedPort)) {
-          issues.push(issue(
-            'medium', 0.85, 'docker',
-            `Dockerfile EXPOSE port (${exposedPort}) does not match application port (${appPort})`,
-            `\`${df}\` exposes port ${exposedPort} but the application binds to port ${appPort}. This will cause the container to be unreachable.`,
-            `Change \`EXPOSE ${exposedPort}\` to \`EXPOSE ${appPort}\` in your Dockerfile.`,
-            { filePath: df, evidence: [`EXPOSE ${exposedPort} in Dockerfile, app uses ${appPort}`] },
-          ));
-        }
-      }
-
-      // Check: running as root (look for a USER directive on a non-comment line)
-      const hasNonRootUser = /^USER\s+(?!root\b)\S/m.test(nonCommentContent);
-      if (!hasNonRootUser) {
+      const exposed = nonComment.match(/^EXPOSE\s+(\d+)/m);
+      if (exposed && appPorts.size > 0 && !appPorts.has(parseInt(exposed[1], 10))) {
+        const appPort = [...appPorts][0];
         issues.push(issue(
-          'medium', 0.8, 'docker',
-          `Docker container may run as root`,
-          `No non-root USER directive found in \`${df}\`. Running containers as root is a security risk.`,
-          `Add \`USER node\` (or another non-root user) before CMD/ENTRYPOINT in your Dockerfile.`,
-          { filePath: df, evidence: ['No USER directive found in Dockerfile'] },
+          'medium', 0.85, 'docker',
+          `Dockerfile EXPOSE port (${exposed[1]}) does not match application port (${appPort})`,
+          `\`${df}\` exposes port ${exposed[1]} but the application listens on ${[...appPorts].join(', ')}, so the container port mapping will not reach it.`,
+          `Change \`EXPOSE ${exposed[1]}\` to \`EXPOSE ${appPort}\`.`,
+          { filePath: df, evidence: [`EXPOSE ${exposed[1]} in Dockerfile, app uses ${[...appPorts].join(', ')}`], whyUncertain: 'PORT may be overridden at runtime.' },
+        ));
+      }
+      // Multi-stage builds only need USER in the final stage; a FROM distroless/nonroot image is already non-root.
+      const finalStage = nonComment.split(/^FROM\s/m).pop() ?? nonComment;
+      const nonRoot = /^USER\s+(?!root\b|0\b)\S/m.test(finalStage) || /^\S*(distroless|nonroot|chainguard)\S*/im.test(finalStage);
+      if (!nonRoot) {
+        issues.push(issue(
+          'medium', 0.7, 'security',
+          'Docker container runs as root',
+          `The final stage of \`${df}\` has no non-root USER, so a compromised process has root inside the container.`,
+          'Add `USER node` (or another unprivileged user) before CMD/ENTRYPOINT.',
+          { filePath: df, evidence: ['No non-root USER directive in the final stage'] },
         ));
       }
     }
 
-    // Check: docker-compose missing required env vars from .env.example
     if (/docker-compose\.(yml|yaml)$/i.test(df)) {
-      const envExampleContent = readFileSafe(path.join(repoPath, '.env.example'))
-        ?? readFileSafe(path.join(repoPath, '.env.sample'))
-        ?? '';
-      const requiredVars = parseEnvNames(envExampleContent);
+      const template = readFileSafe(path.join(repoPath, '.env.example')) ?? readFileSafe(path.join(repoPath, '.env.sample')) ?? '';
+      const requiredSecrets = parseEnvNames(template).filter(isSecretName);
       // `env_file:` passes every variable from the file through, so nothing is missing.
-      const usesEnvFile = /^\s*env_file\s*:/m.test(content);
-      if (requiredVars.length > 0 && !usesEnvFile) {
-        // Extract env var names defined in docker-compose environment blocks
-        const composeEnvRe = /^\s{6,}([A-Z_][A-Z0-9_]*)[:=]/gm;
-        const composeVars = new Set<string>();
-        let ce: RegExpExecArray | null;
-        while ((ce = composeEnvRe.exec(content)) !== null) {
-          composeVars.add(ce[1]);
-        }
-        const missingInCompose = requiredVars.filter(
-          (v) => !composeVars.has(v) && isSecretName(v),
-        );
-        if (missingInCompose.length > 0) {
+      if (requiredSecrets.length > 0 && !/^\s*env_file\s*:/m.test(content)) {
+        const composeVars = new Set([...content.matchAll(/^\s+-?\s*([A-Z_][A-Z0-9_]*)\s*[:=]/gm)].map((m) => m[1]));
+        const missing = requiredSecrets.filter((v) => !composeVars.has(v));
+        if (missing.length > 0) {
           issues.push(issue(
             'high', 0.85, 'docker',
-            `docker-compose is missing required secret environment variable(s)`,
-            `\`${df}\` does not define: ${missingInCompose.join(', ')}. These are listed in \`.env.example\` as required secrets and the application will fail to start without them.`,
-            `Add the missing variable(s) to the \`environment:\` block in \`${df}\`. Use Docker secrets or a secrets manager — never commit real values.`,
-            { filePath: df, evidence: missingInCompose.map((v) => `${v} missing from docker-compose environment`) },
+            'docker-compose is missing required secret environment variable(s)',
+            `\`${df}\` does not set ${missing.join(', ')}, which \`.env.example\` lists as required, so the service will start without them.`,
+            `Pass the variable(s) through the \`environment:\` block or an \`env_file:\` in \`${df}\` — never commit real values.`,
+            { filePath: df, evidence: missing.map((v) => `${v} missing from docker-compose environment`) },
           ));
         }
       }
@@ -344,107 +281,22 @@ export async function analyzePortsAndDocker(
   return { portMentions: mentions, issues, dockerfiles };
 }
 
-// ─── CI analysis ──────────────────────────────────────────────────────────────
+// ─── Documentation ────────────────────────────────────────────────────────────
 
-export async function analyzeCi(
-  repoPath: string,
-  profile: RepositoryProfile,
-): Promise<{ issues: ConfigIssue[]; ciFiles: string[] }> {
-  const issues: ConfigIssue[] = [];
-  const ciFiles = profile.configFiles.filter((f) =>
-    f.includes('.github/workflows') || f.endsWith('.gitlab-ci.yml') || f.includes('.circleci/')
-  );
-
-  let anyWorkflowRunsTests = false;
-  const testScriptNames = Object.keys(profile.scripts).filter((k) => k === 'test' || k.startsWith('test'));
-
-  for (const ciFile of ciFiles) {
-    const content = readFileSafe(path.join(repoPath, ciFile));
-    if (!content) continue;
-
-    const ciNonCommentContent = content.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
-    const hasTestInCi = /npm (run )?test|npm t\b|yarn (run )?test|pnpm (run )?test|bun (run )?test|vitest|jest|mocha|pytest/.test(ciNonCommentContent);
-    const hasInstall = /npm (ci|install|i)\b|yarn( install)?\s*$|yarn install|pnpm (install|i)\b|bun install|pip install|poetry install|uv sync/m.test(ciNonCommentContent);
-
-    if (hasTestInCi) {
-      anyWorkflowRunsTests = true;
-
-      if (!hasInstall) {
-        issues.push(issue(
-          'high', 0.9, 'ci',
-          `CI workflow may not install dependencies`,
-          `\`${ciFile}\` runs tests but does not appear to run a dependency install command first.`,
-          `Add \`run: npm ci\` (or equivalent) to your CI workflow before the test step.`,
-          { filePath: ciFile, evidence: ['No npm/yarn/pnpm install found in workflow running tests'] },
-        ));
-      }
-
-      // Versions can be a scalar (`node-version: 20`), a matrix list (`node-version: [18, 20]`),
-      // or come from a file (`node-version-file: .nvmrc`). The lowest listed version is compared.
-      const nodeVersionLine = ciNonCommentContent.match(/node-version\s*:\s*(.+)/i)?.[1] ?? '';
-      // Only the major version of each entry counts ('18.17.0' → 18).
-      const listedVersions = nodeVersionLine.split(',')
-        .map((part) => part.match(/(\d+)/)?.[1])
-        .filter((v): v is string => v !== undefined)
-        .map((v) => parseInt(v, 10));
-      const pinsNodeVersion = nodeVersionLine.trim().length > 0 || /node-version-file\s*:/i.test(ciNonCommentContent);
-      const lowestCiNode = listedVersions.length > 0 ? Math.min(...listedVersions) : undefined;
-      if (!pinsNodeVersion) {
-        if (profile.nodeVersion) {
-          issues.push(issue(
-            'low', 0.7, 'ci',
-            `CI workflow does not pin a Node.js version`,
-            `\`${ciFile}\` runs tests but does not specify a Node.js version. Without pinning, CI may behave differently from local development.`,
-            `Add \`node-version: '${profile.nodeVersion}'\` to your workflow's setup-node step.`,
-            { filePath: ciFile },
-          ));
-        }
-      } else if (profile.nodeVersion && lowestCiNode !== undefined) {
-        const ciNode = lowestCiNode;
-        const requiredMatch = profile.nodeVersion.match(/(\d+)/);
-        if (requiredMatch) {
-          const requiredNode = parseInt(requiredMatch[1], 10);
-          if (ciNode < requiredNode) {
-            issues.push(issue(
-              'high', 0.9, 'ci',
-              `CI uses Node.js ${ciNode} but project requires Node.js ${requiredNode}+`,
-              `\`${ciFile}\` uses \`node-version: '${ciNode}'\` but \`package.json\` engines field requires Node.js ${profile.nodeVersion}.`,
-              `Update the CI workflow to use \`node-version: '${requiredNode}'\` (or higher).`,
-              { filePath: ciFile, evidence: [`CI node-version: ${ciNode}, engines: ${profile.nodeVersion}`] },
-            ));
-          }
-        }
-      }
-    }
-  }
-
-  if (!anyWorkflowRunsTests && testScriptNames.length > 0 && ciFiles.length > 0) {
-    issues.push(issue(
-      'high', 0.85, 'ci',
-      `Tests are not run in CI`,
-      `The project has a test script defined, but none of the CI workflows run it.`,
-      `Add a step that runs \`npm test\` (or equivalent) in your main CI workflow.`,
-      { evidence: [`Test script exists: ${testScriptNames.join(', ')}`] },
-    ));
-  }
-
-  return { issues, ciFiles };
-}
-
-// ─── Documentation analysis ───────────────────────────────────────────────────
-
+/** README presence, setup/test instructions, and (for services) documented ports. */
 export function analyzeDocumentation(
   repoPath: string,
   profile: RepositoryProfile,
+  context: { isService?: boolean; portMentions?: PortMention[] } = {},
 ): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
-  const readmeFile = profile.configFiles.find((f) => /readme\.md$/i.test(f));
+  const readmeFile = findReadme(repoPath);
   if (!readmeFile) {
     issues.push(issue(
       'low', 1.0, 'documentation',
-      'No README.md found',
-      'The repository does not have a README.md file. This makes it difficult for new contributors to understand the project.',
-      'Create a README.md with setup instructions, run commands, and test commands.',
+      'No README found',
+      'The repository has no README at its root, so new contributors have nowhere to start.',
+      'Add a README.md with setup, run, and test instructions.',
     ));
     return issues;
   }
@@ -452,89 +304,66 @@ export function analyzeDocumentation(
   const content = readFileSafe(path.join(repoPath, readmeFile)) ?? '';
   const lower = content.toLowerCase();
 
-  // Check if README mentions install
-  const installCommands = ['npm install', 'npm ci', 'npm i ', 'yarn install', 'pnpm install', 'bun install',
-    'pip install', 'poetry install', 'uv sync', 'go mod download', 'go build', 'cargo build', 'bundle install',
-    'composer install', 'mvn install', 'gradle build', 'install:all'];
+  const installCommands = ['npm install', 'npm ci', 'npm i ', 'yarn', 'pnpm', 'bun install', 'bun add', 'pip install', 'poetry',
+    'uv sync', 'uv add', 'go get', 'go install', 'go mod', 'cargo add', 'cargo build', 'cargo install', 'bundle install', 'gem install',
+    'composer', 'mvn ', 'gradle', 'brew install', 'docker', 'install:all'];
   if (!installCommands.some((cmd) => lower.includes(cmd))) {
     issues.push(issue(
       'info', 0.8, 'documentation',
       'README does not document how to install dependencies',
-      `\`${readmeFile}\` does not include dependency installation instructions.`,
-      'Add installation instructions (e.g., `npm install`) to your README.',
+      `\`${readmeFile}\` has no installation instructions.`,
+      'Add installation instructions (e.g., `npm install`) to the README.',
       { filePath: readmeFile },
     ));
   }
 
-  // Check if README mentions test command
-  const hasTestScript = Object.keys(profile.scripts).some((k) => k === 'test');
-  const testCommands = ['npm test', 'npm run test', 'yarn test', 'pnpm test', 'bun test', 'npx vitest', 'npx jest'];
-  if (hasTestScript && !testCommands.some((cmd) => lower.includes(cmd))) {
+  const testCommands = ['npm test', 'npm run test', 'npm t', 'yarn test', 'pnpm test', 'bun test', 'npx vitest', 'npx jest', 'pytest', 'tox', 'go test', 'cargo test', 'make test'];
+  if (profile.scripts.test && !testCommands.some((cmd) => lower.includes(cmd)) && !fileExists(path.join(repoPath, 'CONTRIBUTING.md'))) {
     issues.push(issue(
       'info', 0.75, 'documentation',
       'README does not document how to run tests',
-      `\`${readmeFile}\` does not mention the test command despite a test script being defined.`,
-      'Add test instructions (e.g., `npm test`) to your README.',
+      `\`${readmeFile}\` does not mention the test command, and there is no CONTRIBUTING.md.`,
+      'Add test instructions (e.g., `npm test`) to the README or a CONTRIBUTING.md.',
       { filePath: readmeFile },
     ));
   }
 
-  // Check: README mentions a port that doesn't match code
-  const readmePorts = new Set<number>();
-  const portRe = /(?:port|localhost)[:\s]+(\d{2,5})/gi;
-  let m: RegExpExecArray | null;
-  while ((m = portRe.exec(content)) !== null) {
-    const p = parseInt(m[1], 10);
-    if (p >= 80 && p <= 65535) readmePorts.add(p);
-  }
-
-  if (readmePorts.size > 0) {
-    // Collect ports actually used in source files
-    const appPorts = new Set<number>();
-    const appPortRe = /(?:port|PORT|listen)\D{0,20}(\d{2,5})/gi;
-    for (const relPath of profile.sourceFiles) {
-      if (!/\.(ts|js)$/.test(relPath)) continue;
-      const src = readFileSafe(path.join(repoPath, relPath));
-      if (!src) continue;
-      let am: RegExpExecArray | null;
-      const re = new RegExp(appPortRe.source, 'gi');
-      while ((am = re.exec(src)) !== null) {
-        const p = parseInt(am[1], 10);
-        if (p >= 80 && p <= 65535) appPorts.add(p);
-      }
-    }
-
-    if (appPorts.size > 0) {
-      const mismatchedReadmePorts = Array.from(readmePorts).filter((p) => !appPorts.has(p));
-      if (mismatchedReadmePorts.length > 0) {
-        issues.push(issue(
-          'medium', 0.75, 'documentation',
-          `README documents port(s) not used by the application`,
-          `\`${readmeFile}\` mentions port(s) ${mismatchedReadmePorts.join(', ')} but application code uses port(s) ${[...appPorts].join(', ')}. This will mislead developers trying to connect to the service.`,
-          `Update \`${readmeFile}\` to reference the correct port(s): ${[...appPorts].join(', ')}.`,
-          { filePath: readmeFile, evidence: mismatchedReadmePorts.map((p) => `Port ${p} in README not found in source code`) },
-        ));
-      }
+  // Ports only matter for services, and only as local URLs (not example ports of other systems).
+  const appPorts = new Set((context.portMentions ?? []).map((m) => m.port));
+  if (context.isService && appPorts.size > 0) {
+    const documented = new Set([...content.matchAll(/(?:localhost|127\.0\.0\.1|0\.0\.0\.0):(\d{2,5})/gi)].map((m) => parseInt(m[1], 10)));
+    const stale = [...documented].filter((p) => !appPorts.has(p));
+    if (stale.length > 0 && ![...documented].some((p) => appPorts.has(p))) {
+      issues.push(issue(
+        'low', 0.7, 'documentation',
+        'README points to a port the application does not use',
+        `\`${readmeFile}\` links to localhost:${stale.join(', localhost:')}, but the application listens on ${[...appPorts].join(', ')}.`,
+        `Update the README to use port ${[...appPorts][0]}.`,
+        { filePath: readmeFile, evidence: stale.map((p) => `localhost:${p} in README`) },
+      ));
     }
   }
 
   return issues;
 }
 
-// ─── Runtime / package analysis ───────────────────────────────────────────────
+// ─── Runtime / package scripts ────────────────────────────────────────────────
 
+/** package.json test script and .env template checks. */
 export function analyzeRuntime(
   repoPath: string,
   profile: RepositoryProfile,
   envVars: EnvVarInfo[] = [],
+  context: { isService?: boolean; docsText?: string } = {},
 ): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
 
   // package.json scripts only make sense for Node projects
-  const hasPackageJson = fileExists(path.join(repoPath, 'package.json'));
-  if (hasPackageJson && !profile.scripts['test']) {
-    const installedFramework = ['jest', 'vitest', 'mocha'].find((fw) => profile.devDependencies[fw]);
-    if (installedFramework) {
+  if (fileExists(path.join(repoPath, 'package.json')) && !profile.scripts.test) {
+    const installedFramework = ['jest', 'vitest', 'mocha', 'ava'].find((fw) => profile.devDependencies[fw]);
+    if (profile.isMonorepo) {
+      // Workspaces usually run tests per package
+    } else if (installedFramework) {
       issues.push(issue(
         'medium', 0.9, 'scripts',
         'Test framework installed but no test script configured',
@@ -544,28 +373,30 @@ export function analyzeRuntime(
       ));
     } else {
       issues.push(issue(
-        'medium', 0.95, 'scripts',
+        profile.testFiles.length > 0 ? 'low' : 'medium', 0.9, 'scripts',
         'No "test" script defined in package.json',
-        'The project does not have a `test` script in package.json. Running `npm test` will fail.',
-        'Add a `"test"` script to package.json (e.g., `"test": "jest"` or `"test": "vitest run"`).',
+        profile.testFiles.length > 0
+          ? 'The project has test files, but `npm test` will not run them.'
+          : 'The project has no `test` script, so `npm test` fails.',
+        'Add a `"test"` script to package.json (e.g., `"test": "vitest run"`).',
         { filePath: 'package.json' },
       ));
     }
   }
 
-  // .env.example only matters when application code actually reads configuration variables
-  const hasEnvExample = fileExists(path.join(repoPath, '.env.example')) ||
-    fileExists(path.join(repoPath, '.env.sample')) ||
-    envVars.some((v) => v.definedIn.some((f) => /\.env\.(example|sample|template|defaults)$/.test(f)));
-
-  const usesEnv = envVars.some((v) => v.usedIn.length > 0
-    && (v.category === 'APPLICATION' || v.category === 'DATABASE' || v.category === 'SERVICE'));
-  if (!hasEnvExample && usesEnv) {
+  // .env templates only matter for services whose configuration is documented nowhere else
+  const isService = context.isService ?? true;
+  const hasTemplate = fileExists(path.join(repoPath, '.env.example')) || fileExists(path.join(repoPath, '.env.sample'))
+    || envVars.some((v) => v.definedIn.length > 0);
+  const undocumentedAppVars = envVars.filter((v) => v.usedIn.length > 0 && !v.hasDefault && v.definedIn.length === 0
+    && (v.category === 'APPLICATION' || v.category === 'DATABASE' || v.category === 'SERVICE')
+    && !(context.docsText ?? '').includes(v.name.toLowerCase()));
+  if (isService && !hasTemplate && undocumentedAppVars.length > 0) {
     issues.push(issue(
       'low', 0.7, 'environment',
       'No .env.example file found',
-      'The project does not have a .env.example file. New contributors will not know which environment variables are required.',
-      'Create a .env.example file documenting all required environment variables (with placeholder values, not real secrets).',
+      `The service reads ${undocumentedAppVars.length} configuration variable(s) (${undocumentedAppVars.slice(0, 3).map((v) => v.name).join(', ')}) with no template showing what to set.`,
+      'Create a .env.example listing every required variable with placeholder values.',
     ));
   }
 
@@ -574,39 +405,34 @@ export function analyzeRuntime(
 
 // ─── Full ConfigDoctor ────────────────────────────────────────────────────────
 
+const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3, info: 4 } as const;
+
+/** Run every configuration and security check. */
 export async function runConfigDoctor(
   repoPath: string,
   profile: RepositoryProfile,
+  routes: RouteInfo[] = [],
 ): Promise<ConfigHealth> {
-  const allFiles = [...profile.sourceFiles, ...profile.configFiles];
-
-  const [envResult, portResult, ciResult] = await Promise.all([
-    analyzeEnvVars(repoPath, allFiles),
+  const [portResult, ciResult, securityIssues, docsText] = await Promise.all([
     analyzePortsAndDocker(repoPath, profile),
     analyzeCi(repoPath, profile),
+    analyzeSecurity(repoPath, profile),
+    readDocs(repoPath),
   ]);
-
-  const docIssues = analyzeDocumentation(repoPath, profile);
-  const runtimeIssues = analyzeRuntime(repoPath, profile, envResult.envVars);
+  const isService = detectService(repoPath, profile, routes, portResult.portMentions);
+  const envResult = await analyzeEnvVars(repoPath, [...profile.sourceFiles.filter((f) => getSourceType(f) === 'production'), ...profile.configFiles], { isService, docsText });
 
   const allIssues: ConfigIssue[] = [
+    ...securityIssues,
     ...envResult.issues,
     ...portResult.issues,
     ...ciResult.issues,
-    ...docIssues,
-    ...runtimeIssues,
-  ];
-
-  // Sort: critical first
-  const severityOrder = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
-  allIssues.sort((a, b) => severityOrder[a.severity] - severityOrder[b.severity]);
+    ...analyzeDocumentation(repoPath, profile, { isService, portMentions: portResult.portMentions }),
+    ...analyzeRuntime(repoPath, profile, envResult.envVars, { isService, docsText }),
+  ].sort((a, b) => SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]);
 
   const criticalCount = allIssues.filter((i) => i.severity === 'critical').length;
   const highCount = allIssues.filter((i) => i.severity === 'high').length;
-
-  const summary = allIssues.length === 0
-    ? 'No configuration issues detected.'
-    : `Found ${allIssues.length} issue(s): ${criticalCount} critical, ${highCount} high.`;
 
   return {
     issues: allIssues,
@@ -616,7 +442,9 @@ export async function runConfigDoctor(
     ciFiles: ciResult.ciFiles,
     hasEnvExample: fileExists(path.join(repoPath, '.env.example')) || fileExists(path.join(repoPath, '.env.sample'))
       || envResult.envVars.some((v) => v.definedIn.length > 0),
-    hasDotenv: profile.devDependencies['dotenv'] !== undefined || profile.dependencies['dotenv'] !== undefined,
-    summary,
+    hasDotenv: profile.devDependencies.dotenv !== undefined || profile.dependencies.dotenv !== undefined,
+    summary: allIssues.length === 0
+      ? `No configuration issues detected (${isService ? 'service' : 'library'}).`
+      : `Found ${allIssues.length} issue(s): ${criticalCount} critical, ${highCount} high (${isService ? 'service' : 'library'} checks).`,
   };
 }

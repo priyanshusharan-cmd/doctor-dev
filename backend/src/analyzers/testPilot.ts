@@ -7,357 +7,309 @@ import type {
   TestMapping,
   TestGap,
   GeneratedTest,
-  GapCategory,
   GapSeverity,
   CoverageStatus,
+  SymbolImportance,
   TestFramework,
 } from '../types';
+import type { Reach } from './importGraph';
+import { isAuthRelated, isAuthRoute, isPaymentRelated, maxImportance } from './importance';
 
 // ─── Test Mapping ─────────────────────────────────────────────────────────────
 
-const GENERIC_FILE_NAMES = new Set(['index', 'main', 'app', 'server', 'utils', 'util', 'helpers', 'types', 'config', 'constants']);
+const GENERIC_FILE_NAMES = new Set(['index', 'main', 'app', 'server', 'utils', 'util', 'helpers', 'types', 'config', 'constants', 'mod', '__init__']);
 
 /** Remove the final extension: "src/foo.service.ts" → "src/foo.service". */
 function stripExtension(filePath: string): string {
   return filePath.replace(/\.[^./\\]+$/, '');
 }
 
+/** "test/unit/user-service.spec.ts" → "user-service"; "tests/test_users.py" → "users". */
+function testSubjectName(testFile: string): string {
+  return path.posix.basename(stripExtension(testFile))
+    .replace(/[._-](test|spec|tests|e2e|unit|integration)$/i, '')
+    .replace(/^(test|tests)[._-]/i, '')
+    .toLowerCase();
+}
+
+/** URL of a page in a file-based router: "frontend/src/routes/signup.tsx" → "/signup". */
+function pageUrl(sourceFile: string): string | null {
+  const m = sourceFile.match(/(?:^|\/)(?:routes|pages|app)\/(.+)\.(?:[jt]sx?|vue|svelte)$/i);
+  if (!m) return null;
+  const url = `/${m[1]}`
+    .replace(/\/(index|page|route|_index|\+page)$/i, '')
+    .replace(/\/_[^/]*|\/\([^)]*\)/g, '') // layout and group segments
+    .replace(/\$|\[[^\]]+\]/g, '')
+    .replace(/\/+$/, '')
+    .toLowerCase();
+  return url.length > 1 && !url.includes('.') ? url : null;
+}
+
+/** Confidence that a file reached through `depth` production hops is exercised by tests. */
+export function depthConfidence(depth: number): number {
+  return depth <= 1 ? 0.95 : depth === 2 ? 0.8 : depth === 3 ? 0.7 : 0.6;
+}
+
+export interface MappingInput {
+  sourceFiles: string[];
+  testFiles: string[];
+  /** Import-graph reach from tests; files missing from it were never loaded by a test. */
+  reach: Map<string, Reach>;
+  /** Lower-cased concatenation of test file contents, for path references. */
+  testCorpus: string;
+  /** True when at least one test import resolved to a repository file. */
+  importsTraceable: boolean;
+}
+
 /**
- * Map source files to their related test files using:
- * - filename proximity (foo.ts → foo.test.ts)
- * - import analysis (tests that import the source file)
- * - folder mirroring (src/services/foo.ts → tests/services/foo.test.ts)
+ * Map production files to test evidence:
+ * 1. import graph — a test imports the file directly (DIRECTLY_TESTED) or through other
+ *    modules such as the package entry (INDIRECTLY_TESTED, confidence falls with depth);
+ * 2. naming — `foo.ts` ↔ `foo.test.ts` / `test_foo.py` (PARTIALLY_TESTED);
+ * 3. path references — tests that spawn or read `bin/cli.js` by path (PARTIALLY_TESTED).
+ * Files no test reaches are NOT_TESTED, or NOT_ENOUGH_EVIDENCE when imports in this
+ * repository could not be traced at all (unsupported language or module system).
  */
-export function buildTestMappings(
-  sourceFiles: string[],
-  testProfile: TestProfile,
-): TestMapping[] {
-  const mappings: TestMapping[] = [];
-
-  for (const sf of sourceFiles) {
-    const relatedTests: string[] = [];
-    const evidence: string[] = [];
-    let confidence = 0;
-
-    const sfBase = stripExtension(sf).replace(/\\/g, '/');
-    const sfName = sfBase.split('/').pop() ?? '';
-    // index.ts, app.ts, utils.ts, … exist in many folders, so a bare name match is not
-    // evidence on its own; those files additionally need a shared parent directory.
-    const isGenericName = GENERIC_FILE_NAMES.has(sfName.toLowerCase());
-    const sfParent = sfBase.split('/').slice(-2, -1)[0]?.toLowerCase();
-
-    for (const suite of testProfile.suites) {
-      const suiteBase = stripExtension(suite.filePath).replace(/\\/g, '/');
-
-      // Direct name match: foo.ts ↔ foo.test.ts
-      const suiteBaseLower = suiteBase.toLowerCase();
-      const sfNameLower = sfName.toLowerCase();
-      const sharesParent = !isGenericName || (sfParent !== undefined && suiteBaseLower.split('/').includes(sfParent));
-      if (
-        sharesParent && (
-        suiteBaseLower.endsWith(`/${sfNameLower}.test`) ||
-        suiteBaseLower.endsWith(`/${sfNameLower}.spec`) ||
-        suiteBaseLower.endsWith(`/${sfNameLower}`) ||
-        suiteBaseLower.endsWith(`/${sfNameLower}_test`) ||
-        suiteBaseLower.endsWith(`/test_${sfNameLower}`))
-      ) {
-        relatedTests.push(suite.filePath);
-        evidence.push(`Direct file name match with ${suite.filePath}`);
-        confidence = Math.max(confidence, 0.95);
-        continue;
-      }
-
-      // Import-based coverage
-      if (suite.importsUnder.includes(sf)) {
-        relatedTests.push(suite.filePath);
-        evidence.push(`Imported directly by ${suite.filePath}`);
-        confidence = Math.max(confidence, 0.9);
-        continue;
-      }
-
-      // Path segment match: auth/user → user.test
-      const sfSegments = sfBase.split('/');
-      const suiteSegments = suiteBase.split('/');
-      const overlap = sfSegments.filter((s) => suiteSegments.includes(s)).length;
-      if (overlap >= 2 && sfName.length > 3 && suite.filePath.toLowerCase().includes(sfName.toLowerCase())) {
-        relatedTests.push(suite.filePath);
-        evidence.push(`Heuristic path and name match with ${suite.filePath}`);
-        confidence = Math.max(confidence, 0.6);
-      }
-    }
-
-    // De-duplicate
-    const unique = [...new Set(relatedTests)];
-    
-    let status: CoverageStatus = 'NOT_TESTED';
-    if (unique.length > 0) {
-      if (confidence >= 0.9) status = 'DIRECTLY_TESTED';
-      else if (confidence >= 0.7) status = 'INDIRECTLY_TESTED';
-      else status = 'PARTIALLY_TESTED';
-    } else if (testProfile.totalTestFiles > 0) {
-      const hasIntegrationSuites = testProfile.suites.some((s) =>
-        /(?:integration|e2e|system|parallel|sequential|acceptance)/i.test(s.filePath)
-      );
-
-      if (hasIntegrationSuites) {
-        status = 'INDIRECTLY_TESTED';
-        confidence = 0.55;
-        evidence.push('Repository has integration/system test suites that exercise application behavior indirectly.');
-      } else {
-        status = 'NOT_ENOUGH_EVIDENCE';
-        confidence = 0.35;
-        evidence.push('Tests exist in repository but no direct symbol or import mapping was identified.');
-      }
-    }
-
-    // Actual coverage overrides
-    if (testProfile.coverage.status === 'ACTUAL_COVERAGE' && unique.length === 0) {
-      status = 'PARTIALLY_TESTED';
-      confidence = 0.6;
-      evidence.push(`Relying on repository actual coverage report${testProfile.coverage.percentage !== undefined ? ` (${testProfile.coverage.percentage}%)` : ''}.`);
-    }
-
-    mappings.push({
-      sourceFile: sf,
-      relatedTests: unique,
-      coverageStatus: status,
-      confidence: unique.length > 0 ? confidence : (status === 'INDIRECTLY_TESTED' ? 0.55 : 0.35),
-      evidence,
-    });
+export function buildTestMappings(input: MappingInput): TestMapping[] {
+  const subjects = new Map<string, string[]>();
+  for (const t of input.testFiles) {
+    const name = testSubjectName(t);
+    if (!name) continue;
+    subjects.set(name, [...(subjects.get(name) ?? []), t]);
   }
 
-  return mappings;
+  return input.sourceFiles.map((sourceFile): TestMapping => {
+    const reached = input.reach.get(sourceFile);
+    if (reached) {
+      const tests = [...reached.tests].slice(0, 10);
+      const direct = reached.depth <= 1;
+      return {
+        sourceFile,
+        relatedTests: tests,
+        coverageStatus: direct ? 'DIRECTLY_TESTED' : 'INDIRECTLY_TESTED',
+        confidence: depthConfidence(reached.depth),
+        depth: reached.depth,
+        evidence: [direct
+          ? `Imported directly by ${tests.slice(0, 2).join(', ')}${reached.tests.size > 2 ? ` and ${reached.tests.size - 2} more` : ''}`
+          : `Loaded by tests through ${reached.depth - 1} intermediate module(s), e.g. from ${tests[0]}`],
+      };
+    }
+
+    const base = path.posix.basename(stripExtension(sourceFile)).toLowerCase();
+    const parent = path.posix.basename(path.posix.dirname(sourceFile)).toLowerCase();
+    const nameMatches = (subjects.get(base) ?? []).filter((t) =>
+      !GENERIC_FILE_NAMES.has(base) || t.toLowerCase().split('/').includes(parent));
+    if (nameMatches.length > 0) {
+      return {
+        sourceFile,
+        relatedTests: nameMatches.slice(0, 5),
+        coverageStatus: 'PARTIALLY_TESTED',
+        confidence: 0.6,
+        evidence: [`Test file name matches: ${nameMatches.slice(0, 2).join(', ')}`],
+      };
+    }
+
+    const reference = stripExtension(sourceFile).split('/').slice(-2).join('/').toLowerCase();
+    if (reference.includes('/') && input.testCorpus.includes(reference)) {
+      return {
+        sourceFile,
+        relatedTests: [],
+        coverageStatus: 'PARTIALLY_TESTED',
+        confidence: 0.55,
+        evidence: [`Tests reference "${reference}" by path (e.g. spawning or reading it)`],
+      };
+    }
+
+    // File-based routing (routes/, pages/, app/): end-to-end tests visit the page by URL
+    const url = pageUrl(sourceFile);
+    if (url && (input.testCorpus.includes(`'${url}'`) || input.testCorpus.includes(`"${url}"`) || input.testCorpus.includes(`\`${url}`)
+      || input.testCorpus.includes(`${url}/`) || input.testCorpus.includes(`${url}?`))) {
+      return {
+        sourceFile,
+        relatedTests: [],
+        coverageStatus: 'PARTIALLY_TESTED',
+        confidence: 0.5,
+        evidence: [`End-to-end tests visit ${url}`],
+      };
+    }
+
+    const status: CoverageStatus = input.testFiles.length > 0 && !input.importsTraceable ? 'NOT_ENOUGH_EVIDENCE' : 'NOT_TESTED';
+    return {
+      sourceFile,
+      relatedTests: [],
+      coverageStatus: status,
+      confidence: status === 'NOT_TESTED' ? (input.testFiles.length > 0 ? 0.85 : 0.95) : 0.35,
+      evidence: [status === 'NOT_TESTED'
+        ? (input.testFiles.length > 0 ? 'No test imports this file, directly or through other modules' : 'The repository has no automated tests')
+        : 'Tests exist, but their imports could not be traced to source files'],
+    };
+  });
 }
 
 // ─── Gap Detection ────────────────────────────────────────────────────────────
 
-const AUTH_RE = /\b(auth|login|logout|register|signup|password|jwt|token|bearer|session|permission|role|guard|middleware|protect|authorize|authenticate)\b/i;
-const DB_RE = /\b(create|update|delete|remove|save|insert|upsert|destroy|drop|truncate)\b/i;
-const PAYMENT_RE = /\b(payment|stripe|paypal|checkout|charge|invoice|billing|subscription)\b/i;
-const ERROR_HANDLING_RE = /\b(try|catch|throw|Error|reject|Promise\.reject|status\(4|status\(5)\b/;
-const EDGE_CASE_RE = /\b(null|undefined|empty|zero|negative|invalid|missing|duplicate|overflow)\b/i;
+const NEGATIVE_AUTH_RE = /(\b40[13]\b|unauthori[sz]ed|forbidden|invalid[\s_-]*(token|password|credential)|wrong[\s_-]*password|not[\s_-]*authori|access[\s_-]*denied|permission[\s_-]*denied|rejects?|tothrow|raises)/i;
+const NEGATIVE_PATH_RE = /(error|fail|throw|reject|invalid|decline|raises|exception|40\d|50\d)/i;
 
-function detectRecommendedTests(
-  symbol: CodeSymbol,
-  sourceContent: string,
-  category: GapCategory,
-): string[] {
-  const name = symbol.name;
-  const tests: string[] = [];
+const SEVERITY_ORDER: Record<GapSeverity, number> = { critical: 0, high: 1, medium: 2, low: 3 };
 
-  switch (category) {
-    case 'no_test':
-      tests.push(`should execute ${name} successfully with valid input`);
-      if (symbol.isAsync) tests.push(`should handle async rejection in ${name}`);
-      if (symbol.paramCount > 0) tests.push(`should handle invalid parameters in ${name}`);
-      if (AUTH_RE.test(sourceContent)) tests.push(`should reject unauthorized access in ${name}`);
-      if (DB_RE.test(sourceContent)) tests.push(`should handle database errors in ${name}`);
-      break;
-    case 'missing_error_test':
-      tests.push(`should return error when ${name} receives invalid input`);
-      tests.push(`should handle exceptions thrown inside ${name}`);
-      if (symbol.isAsync) tests.push(`should handle rejected promise in ${name}`);
-      if (DB_RE.test(sourceContent)) tests.push(`should handle database failure in ${name}`);
-      break;
-    case 'missing_edge_case':
-      tests.push(`should handle null/undefined input in ${name}`);
-      tests.push(`should handle empty collection/string in ${name}`);
-      tests.push(`should handle boundary values in ${name}`);
-      break;
-    case 'missing_auth_test':
-      tests.push(`should reject unauthenticated request to ${name}`);
-      tests.push(`should reject insufficient permissions in ${name}`);
-      tests.push(`should prevent cross-user data access in ${name}`);
-      break;
-    case 'missing_integration_test':
-      tests.push(`should integrate ${name} end-to-end with real dependencies`);
-      tests.push(`should verify ${name} against the database`);
-      break;
-    case 'partial_test':
-      tests.push(`should test failure path in ${name}`);
-      tests.push(`should test edge cases in ${name}`);
-      break;
-  }
+function severityFor(importance: SymbolImportance): GapSeverity {
+  return importance === 'critical' ? 'critical' : importance === 'high' ? 'high' : importance === 'medium' ? 'medium' : 'low';
+}
 
-  return tests.slice(0, 4);
+function downgrade(sev: GapSeverity): GapSeverity {
+  return sev === 'critical' ? 'high' : sev === 'high' ? 'medium' : 'low';
+}
+
+/** Regex that matches a route path as it would appear in a test, with :params as wildcards. */
+function routePattern(routePath: string): RegExp | null {
+  const literal = routePath.replace(/\/+$/, '');
+  if (!literal || literal === '/') return null; // "/" alone appears in every test
+  const escaped = literal
+    .split('/')
+    .map((seg) => (seg.startsWith(':') || /^\{.+\}$/.test(seg) || /^<.+>$/.test(seg) || seg === '*'
+      ? '[^/\'"`\\s?]+'
+      : seg.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')))
+    .join('/');
+  return new RegExp(`${escaped}(?![\\w-])`, 'i');
+}
+
+export interface GapInput {
+  symbols: CodeSymbol[];
+  routes: RouteInfo[];
+  mappings: TestMapping[];
+  testProfile: TestProfile;
+  /** Contents of test files, keyed by repo-relative path. */
+  testContents: Map<string, string>;
 }
 
 /**
- * Analyse symbols, routes, and test mappings to find testing gaps.
- * Returns concrete TestGap objects with evidence.
+ * Find testing gaps, one per untested production file (listing its important symbols),
+ * one per API route that no test references, and negative-path gaps for auth and payment
+ * code whose direct tests never exercise a failure.
  */
-export function findTestingGaps(
-  symbols: CodeSymbol[],
-  routes: RouteInfo[],
-  mappings: TestMapping[],
-  testProfile: TestProfile,
-  sourceContents: Map<string, string>,
-): TestGap[] {
+export function findTestingGaps(input: GapInput): TestGap[] {
   const gaps: TestGap[] = [];
-  const mappingByFile = new Map<string, TestMapping>();
-  for (const m of mappings) mappingByFile.set(m.sourceFile, m);
+  const hasTests = input.testProfile.totalTestFiles > 0;
+  const symbolsByFile = new Map<string, CodeSymbol[]>();
+  for (const s of input.symbols) {
+    if (s.sourceType !== 'production') continue;
+    symbolsByFile.set(s.filePath, [...(symbolsByFile.get(s.filePath) ?? []), s]);
+  }
 
-  // ── 1. Symbol-level gaps ──────────────────────────────────────────────────
-  // Only check medium-importance and above to avoid noise
-  const importantSymbols = symbols.filter(
-    (s) => (s.importance === 'critical' || s.importance === 'high' || s.importance === 'medium') 
-        && s.sourceType === 'production'
-  );
-
-  for (const sym of importantSymbols) {
-    const mapping = mappingByFile.get(sym.filePath);
-    const hasDirectTests = mapping?.coverageStatus === 'DIRECTLY_TESTED';
-    const hasIndirectTests = mapping?.coverageStatus === 'INDIRECTLY_TESTED';
-    const isUnknown = mapping?.coverageStatus === 'NOT_ENOUGH_EVIDENCE';
-    const isNotTested = mapping?.coverageStatus === 'NOT_TESTED';
-    const content = sourceContents.get(sym.filePath) ?? '';
-
-    // Determine gap category
-    let category: GapCategory | null = null;
-    let severity: GapSeverity = 'low';
-    let confidence = 0.5;
-    let reason = '';
-    let whyBelieves = '';
-    let whyUncertain: string | undefined = undefined;
-    const evidence: string[] = [];
-
-    if (isNotTested && testProfile.totalTestFiles === 0) {
-      category = 'no_test';
-      severity = sym.importance === 'critical' ? 'critical' : sym.importance === 'high' ? 'high' : 'medium';
-      confidence = 0.95;
-      reason = `Repository has no automated test suite. ${sym.name} (${sym.importance}) is unverified.`;
-      whyBelieves = `No test files or test runner configuration were found in the repository.`;
-      evidence.push(`Symbol: ${sym.name} (${sym.kind}) at ${sym.filePath}:${sym.lineStart}`);
-      evidence.push(`Importance signals: ${sym.importanceReasons.join(', ')}`);
-    } else if (isNotTested) {
-      category = 'no_test';
-      severity = sym.importance === 'critical' ? 'high' : 'medium';
-      confidence = 0.75;
-      reason = `${sym.name} has importance "${sym.importance}" but no test file covers ${sym.filePath}.`;
-      whyBelieves = `No direct test file, test imports, or directory matches link to ${sym.filePath}.`;
-      whyUncertain = testProfile.totalTestFiles > 20
-        ? `Repository has ${testProfile.totalTestFiles} test files; integration tests may exercise this indirectly.`
-        : undefined;
-      evidence.push(`Symbol: ${sym.name} (${sym.kind}) at ${sym.filePath}:${sym.lineStart}`);
-      if (mapping) evidence.push(...mapping.evidence);
-    } else if (hasDirectTests && ERROR_HANDLING_RE.test(content)) {
-      const suite = testProfile.suites.find((s) => mapping!.relatedTests.includes(s.filePath));
-      const allTestText = suite ? [...suite.itBlocks, ...suite.describeBlocks].join(' ').toLowerCase() : '';
-      const hasErrorTest = /error|fail|reject|throw|invalid|exception/.test(allTestText);
-      if (!hasErrorTest) {
-        category = 'missing_error_test';
-        severity = sym.importance === 'critical' ? 'high' : 'medium';
-        confidence = 0.75;
-        reason = `${sym.name} contains error handling logic but no error-path tests were detected in its suite`;
-        whyBelieves = `Source file contains try/catch/throw/reject blocks, but test descriptions only cover happy paths.`;
-        whyUncertain = `Test assertions may verify errors without mentioning them in describe/it titles.`;
-        evidence.push(`Error handling detected in ${sym.filePath}`);
-        if (suite) evidence.push(`Existing test suite (${suite.filePath}) lacks error-path test cases.`);
-      }
-    } else if (hasIndirectTests) {
-      continue;
-    }
-
-    // Auth gap
-    if (
-      AUTH_RE.test(content) &&
-      AUTH_RE.test(sym.name + sym.importanceReasons.join(' '))
-    ) {
-      const suite = testProfile.suites.find((s) => mapping?.relatedTests.includes(s.filePath));
-      const allTestText = suite ? [...suite.itBlocks, ...suite.describeBlocks].join(' ').toLowerCase() : '';
-      const hasAuthTest = /auth|unauthorized|forbidden|permission|role/.test(allTestText);
-      if (!hasAuthTest && category === null) {
-        category = 'missing_auth_test';
-        severity = 'high';
-        confidence = 0.8;
-        reason = `${sym.name} involves authentication/authorization but no auth-related tests detected`;
-        whyBelieves = `Function signature and body contain authentication keywords, but no security-focused test cases were found.`;
-        whyUncertain = `Authorization middleware may be tested independently in a shared suite.`;
-        evidence.push(`Auth pattern found in ${sym.filePath}:${sym.lineStart}`);
-      }
-    }
-
-    if (!category) continue;
-
-    const recommendedTests = detectRecommendedTests(sym, content, category);
-
+  // ── 1. Files without test evidence ──────────────────────────────────────────
+  for (const m of input.mappings) {
+    if (m.coverageStatus !== 'NOT_TESTED' && m.coverageStatus !== 'NOT_ENOUGH_EVIDENCE') continue;
+    const fileSymbols = (symbolsByFile.get(m.sourceFile) ?? []).filter((s) => s.importance !== 'low');
+    if (fileSymbols.length === 0) continue;
+    const ranked = [...fileSymbols].sort((a, b) => SEVERITY_ORDER[severityFor(a.importance)] - SEVERITY_ORDER[severityFor(b.importance)]);
+    const top = ranked[0];
+    const importance = ranked.reduce<SymbolImportance>((acc, s) => maxImportance(acc, s.importance), 'low');
+    const uncertain = m.coverageStatus === 'NOT_ENOUGH_EVIDENCE';
+    const severity = uncertain ? downgrade(severityFor(importance)) : severityFor(importance);
+    const names = ranked.map((s) => s.name);
     gaps.push({
       id: randomUUID(),
       severity,
-      confidence,
-      category,
-      title: `${category === 'no_test' ? 'No test for' : (category as GapCategory) === 'partial_test' ? 'Unconfirmed coverage for' : 'Incomplete tests for'}: ${sym.name}`,
-      description: `The ${sym.kind} \`${sym.name}\` in \`${sym.filePath}\` ${category === 'no_test' ? 'has no automated test coverage' : (category as GapCategory) === 'partial_test' ? 'could not be linked to test files via static analysis' : 'has tests but is missing important test scenarios'}.`,
-      filePath: sym.filePath,
-      symbolName: sym.name,
-      lineStart: sym.lineStart,
-      reason,
-      evidence,
-      existingTests: mapping?.relatedTests ?? [],
-      recommendedTests,
-      whyDoctorDevBelievesThis: whyBelieves || reason,
-      whyUncertain,
+      confidence: m.confidence,
+      category: uncertain ? 'partial_test' : 'no_test',
+      title: `${uncertain ? 'Unconfirmed test evidence' : 'No test evidence'}: ${m.sourceFile}`,
+      description: `\`${m.sourceFile}\` contains ${names.length} important symbol(s) — ${names.slice(0, 4).join(', ')}${names.length > 4 ? `, +${names.length - 4} more` : ''} — ${uncertain ? 'that could not be linked to any test' : 'and no test loads it'}.`,
+      filePath: m.sourceFile,
+      symbolName: top.name,
+      // Only exported symbols can be imported by a generated test
+      symbolNames: ranked.filter((s) => s.isExported).map((s) => s.name).slice(0, 10),
+      lineStart: top.lineStart,
+      reason: `${top.name} is ${top.importance} (${top.importanceReasons.join(', ') || 'exported'})`,
+      evidence: [...m.evidence, `Most important symbol: ${top.name} at ${m.sourceFile}:${top.lineStart}`],
+      existingTests: [],
+      recommendedTests: recommendedFor(top, m.sourceFile),
+      whyDoctorDevBelievesThis: m.evidence[0],
+      whyUncertain: uncertain
+        ? 'Imports in this repository could not be traced, so tests may cover this file in ways static analysis cannot see.'
+        : hasTests ? 'Tests that drive the program through a CLI, HTTP, or subprocess can exercise code without importing it.' : undefined,
     });
   }
 
-  // ── 2. Route-level gaps (API routes with no test) ─────────────────────────
-  for (const route of routes) {
-    if (route.sourceType !== 'production') continue;
-
-    const mapping = mappingByFile.get(route.filePath);
-    const isUnknown = mapping?.coverageStatus === 'NOT_ENOUGH_EVIDENCE';
-    const hasTests = mapping && (mapping.coverageStatus === 'DIRECTLY_TESTED' || mapping.coverageStatus === 'INDIRECTLY_TESTED');
-    let covered = false;
-
-    if (hasTests) {
-      const routePath = route.path.toLowerCase().replace(/[/:]/g, ' ');
-      covered = testProfile.suites.some((s) =>
-        mapping.relatedTests.includes(s.filePath) &&
-        [...s.itBlocks, ...s.describeBlocks].some((b) => {
-          const norm = b.toLowerCase();
-          return norm.includes(route.method.toLowerCase()) ||
-            routePath.split(' ').filter(Boolean).some((seg) => norm.includes(seg));
-        })
-      );
-      if (covered) continue;
-    }
-
-    if (isUnknown) {
-      continue;
-    }
-
-    const isAuthRoute = AUTH_RE.test(route.path + (route.handlerName ?? ''));
+  // ── 2. Auth / payment code whose tests never exercise a failure ────────────
+  for (const m of input.mappings) {
+    if (m.coverageStatus !== 'DIRECTLY_TESTED') continue;
+    const fileSymbols = symbolsByFile.get(m.sourceFile) ?? [];
+    // Judged by file path: a validator named jwt() in a schema library is not auth code
+    const auth = isAuthRelated(m.sourceFile);
+    const payment = !auth && isPaymentRelated(m.sourceFile);
+    if (!auth && !payment) continue;
+    const testText = m.relatedTests.map((t) => input.testContents.get(t) ?? '').join('\n');
+    if (!testText) continue;
+    const covered = auth ? NEGATIVE_AUTH_RE.test(testText) : NEGATIVE_PATH_RE.test(testText);
+    if (covered) continue;
     gaps.push({
       id: randomUUID(),
-      severity: isAuthRoute ? 'critical' : 'high',
-      confidence: 0.85,
+      severity: 'high',
+      confidence: 0.6,
+      category: auth ? 'missing_auth_test' : 'missing_error_test',
+      title: `${auth ? 'No rejection test for auth code' : 'No failure-path test for payment code'}: ${m.sourceFile}`,
+      description: `\`${m.sourceFile}\` is tested, but ${m.relatedTests.slice(0, 2).join(', ')} never assert${auth ? ' a 401/403, invalid credential, or denied access' : ' a failure, decline, or thrown error'}.`,
+      filePath: m.sourceFile,
+      symbolName: fileSymbols[0]?.name,
+      lineStart: fileSymbols[0]?.lineStart,
+      reason: auth ? 'Authentication code is usually broken on its failure paths, which no test checks here' : 'Payment failures are costly and no test checks one here',
+      evidence: [`Tests: ${m.relatedTests.slice(0, 3).join(', ')}`, `No ${auth ? 'unauthorized/forbidden/invalid-credential' : 'error/decline/reject'} assertion found in them`],
+      existingTests: m.relatedTests,
+      recommendedTests: auth
+        ? ['should reject requests without credentials', 'should reject invalid or expired credentials', 'should forbid access to another user\'s data']
+        : ['should surface a declined payment as an error', 'should not double-charge on retry', 'should roll back when the provider fails'],
+      whyDoctorDevBelievesThis: 'Searched the directly related test files for negative-path assertions.',
+      whyUncertain: 'Failure paths may be tested in a shared suite that this file is not linked to.',
+    });
+  }
+
+  // ── 3. API routes no test references ─────────────────────────────────────────
+  const corpus = [...input.testContents.values()].join('\n');
+  for (const route of input.routes) {
+    if (route.sourceType !== 'production') continue;
+    const pattern = routePattern(route.path);
+    const referenced = pattern ? pattern.test(corpus) : input.mappings.some((m) => m.sourceFile === route.filePath && m.coverageStatus === 'DIRECTLY_TESTED');
+    if (referenced) continue;
+    const authRoute = isAuthRoute(route.path) || isAuthRelated(route.handlerName ?? '');
+    const mutation = /^(POST|PUT|PATCH|DELETE)$/.test(route.method);
+    const severity: GapSeverity = authRoute ? 'critical' : mutation ? 'high' : 'medium';
+    gaps.push({
+      id: randomUUID(),
+      severity,
+      confidence: hasTests ? 0.8 : 0.95,
       category: 'no_test',
       title: `API route not tested: ${route.method} ${route.path}`,
-      description: `The API route \`${route.method} ${route.path}\` defined in \`${route.filePath}\` has no detected test coverage.`,
+      description: `The API route \`${route.method} ${route.path}\` defined in \`${route.filePath}\` is not referenced by any test.`,
       filePath: route.filePath,
       symbolName: route.handlerName,
       lineStart: route.line,
-      reason: `Route ${route.method} ${route.path} is a public API endpoint${isAuthRoute ? ' with auth logic' : ''} — untested routes are a reliability risk`,
-      evidence: [`Route defined at ${route.filePath}:${route.line}`],
+      reason: `${authRoute ? 'Authentication endpoint' : mutation ? 'State-changing endpoint' : 'Public endpoint'} with no test that calls it`,
+      evidence: [`Route defined at ${route.filePath}:${route.line}`, `Path "${route.path}" does not appear in any of ${input.testContents.size} test file(s)`],
       existingTests: [],
       recommendedTests: [
-        `should return 200 for valid ${route.method} ${route.path}`,
+        `should return 2xx for a valid ${route.method} ${route.path}`,
         `should return 4xx for invalid input to ${route.method} ${route.path}`,
-        isAuthRoute ? `should return 401 for unauthenticated ${route.method} ${route.path}` : `should handle edge cases in ${route.method} ${route.path}`,
+        authRoute ? `should return 401 for unauthenticated ${route.method} ${route.path}` : `should handle missing resources in ${route.method} ${route.path}`,
       ],
-      whyDoctorDevBelievesThis: `Found route registration in ${route.filePath}:${route.line}, but no test suite asserts this endpoint.`,
-      whyUncertain: 'May be called indirectly during integration or system tests.',
+      whyDoctorDevBelievesThis: 'Searched every test file for this route path (route parameters treated as wildcards).',
+      whyUncertain: 'Routes mounted under a prefix or built dynamically may be called with a path that does not contain this literal.',
     });
   }
 
-  // Sort: critical first, then by confidence desc
-  return gaps
-    .sort((a, b) => {
-      const order = { critical: 0, high: 1, medium: 2, low: 3 };
-      const so = order[a.severity] - order[b.severity];
-      return so !== 0 ? so : b.confidence - a.confidence;
-    })
-    .slice(0, 40); // cap to avoid overwhelming the UI
+  return gaps.sort((a, b) => {
+    const so = SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
+    return so !== 0 ? so : b.confidence - a.confidence;
+  });
+}
+
+function recommendedFor(symbol: CodeSymbol, file: string): string[] {
+  const tests = [`should ${symbol.isAsync ? 'resolve' : 'return the expected result'} for valid input to ${symbol.name}`];
+  if (symbol.paramCount > 0) tests.push(`should reject invalid arguments to ${symbol.name}`);
+  if (symbol.isAsync) tests.push(`should propagate failures from ${symbol.name}`);
+  if (isAuthRelated(`${file} ${symbol.name}`)) tests.push(`should deny access when ${symbol.name} receives bad credentials`);
+  if (isPaymentRelated(`${file} ${symbol.name}`)) tests.push(`should handle a declined payment in ${symbol.name}`);
+  return tests.slice(0, 4);
 }
 
 // ─── Test Generation ──────────────────────────────────────────────────────────
@@ -427,7 +379,7 @@ export function generateTestsForGaps(gaps: TestGap[], framework: TestFramework):
     if (targetFile.endsWith('.py')) {
       const dir = path.posix.dirname(targetFile);
       const module = stripExtension(targetFile).replace(/\//g, '.');
-      const names = [...new Set(fileGaps.map((g) => importableName(g.symbolName)).filter((n): n is string => !!n))];
+      const names = [...new Set(fileGaps.flatMap((g) => (g.symbolNames ?? [g.symbolName]).map(importableName)).filter((n): n is string => !!n))];
       const content = [
         names.length > 0 ? `from ${module} import ${names.join(', ')}` : `import ${module}`,
         '',
@@ -447,7 +399,7 @@ export function generateTestsForGaps(gaps: TestGap[], framework: TestFramework):
     }
 
     const testFile = testFilePathFor(targetFile);
-    const names = [...new Set(fileGaps.map((g) => importableName(g.symbolName)).filter((n): n is string => !!n))];
+    const names = [...new Set(fileGaps.flatMap((g) => (g.symbolNames ?? [g.symbolName]).map(importableName)).filter((n): n is string => !!n))];
     const importLine = names.length > 0
       ? `import { ${names.join(', ')} } from '${importPathFor(testFile, targetFile)}';`
       : `// Route handlers in ${targetFile} — exercise them through your HTTP test client (e.g. supertest).`;

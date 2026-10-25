@@ -111,5 +111,4 @@ Or use the **Try Demo Repository** button in the UI (set `DEMO_REPO_PATH` env).
 **Phase 6 — Polish + Demo Hardening**
 - Fix demo repository absolute path from UI
 - Add GitHub Actions CI file to demo repo
-- Add bob_sessions/ documentation
 - Final end-to-end demo recording

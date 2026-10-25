@@ -1,18 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import type {
-  TestGap,
+  CodeSymbol,
   ConfigIssue,
-  PriorityFinding,
+  FindingLevel,
   HealthScore,
   HealthState,
-  FindingLevel,
+  IssueSeverity,
+  PriorityFinding,
+  RouteInfo,
+  ScoreDimension,
+  ScoreFactor,
+  SymbolImportance,
+  TestEvidenceSummary,
+  TestGap,
+  TestMapping,
   TestProfile,
 } from '../types';
+import { IMPORTANCE_WEIGHT, isAuthRoute, maxImportance } from '../analyzers/importance';
 
 // ─── Priority Findings ────────────────────────────────────────────────────────
 
 /** Title prefix TestPilot uses for untested API route gaps. */
-const ROUTE_GAP_PREFIX = 'API route not tested: ';
+export const ROUTE_GAP_PREFIX = 'API route not tested: ';
 
 /**
  * Combine test gaps and config issues into a prioritized finding list.
@@ -115,70 +124,158 @@ export function buildPriorityFindings(
 
 // ─── Health Score ─────────────────────────────────────────────────────────────
 
+/** How much one finding of each severity removes from a dimension, before confidence. */
+const SEVERITY_WEIGHT: Record<IssueSeverity, number> = { critical: 0.35, high: 0.18, medium: 0.08, low: 0.03, info: 0 };
+
+/** Credit a file earns toward the testing score for each kind of test evidence. */
+function evidenceCredit(m: TestMapping): number {
+  switch (m.coverageStatus) {
+    case 'DIRECTLY_TESTED': return 1;
+    case 'INDIRECTLY_TESTED': return (m.depth ?? 2) <= 2 ? 0.85 : (m.depth ?? 2) === 3 ? 0.75 : 0.65;
+    case 'PARTIALLY_TESTED': return 0.6;
+    case 'NOT_ENOUGH_EVIDENCE': return 0.3;
+    case 'NOT_TESTED': return 0;
+  }
+}
+
+export interface ScoreInput {
+  /** Mappings for production source files only */
+  mappings: TestMapping[];
+  symbols: CodeSymbol[];
+  routes: RouteInfo[];
+  testGaps: TestGap[];
+  configIssues: ConfigIssue[];
+  testProfile: TestProfile;
+}
+
+/** Summarize how much production code has test evidence. */
+export function summarizeTestEvidence(input: Pick<ScoreInput, 'mappings' | 'symbols' | 'routes' | 'testGaps'>): TestEvidenceSummary {
+  const fileImportance = new Map<string, SymbolImportance>();
+  for (const s of input.symbols) {
+    if (s.sourceType !== 'production') continue;
+    fileImportance.set(s.filePath, maxImportance(fileImportance.get(s.filePath) ?? 'low', s.importance));
+  }
+  let weighted = 0;
+  let total = 0;
+  for (const m of input.mappings) {
+    const w = IMPORTANCE_WEIGHT[fileImportance.get(m.sourceFile) ?? 'low'];
+    total += w;
+    weighted += w * evidenceCredit(m);
+  }
+  const count = (status: TestMapping['coverageStatus']): number => input.mappings.filter((m) => m.coverageStatus === status).length;
+  const productionRoutes = input.routes.filter((r) => r.sourceType === 'production');
+  return {
+    productionFiles: input.mappings.length,
+    directlyTested: count('DIRECTLY_TESTED'),
+    indirectlyTested: count('INDIRECTLY_TESTED'),
+    partiallyTested: count('PARTIALLY_TESTED'),
+    untested: count('NOT_TESTED') + count('NOT_ENOUGH_EVIDENCE'),
+    weightedRatio: total > 0 ? weighted / total : 1,
+    routes: productionRoutes.length,
+    untestedRoutes: input.testGaps.filter((g) => g.title.startsWith(ROUTE_GAP_PREFIX)).length,
+  };
+}
+
+/** Apply findings with diminishing returns: each one removes a share of what is left. */
+function applyFindings(
+  dimension: ScoreDimension,
+  findings: Array<{ severity: IssueSeverity; confidence: number; title: string }>,
+  factors: ScoreFactor[],
+  start = 100,
+): number {
+  let score = start;
+  for (const f of [...findings].sort((a, b) => SEVERITY_WEIGHT[b.severity] * b.confidence - SEVERITY_WEIGHT[a.severity] * a.confidence)) {
+    const loss = score * SEVERITY_WEIGHT[f.severity] * f.confidence;
+    if (loss < 0.5) continue;
+    score -= loss;
+    factors.push({ dimension, label: f.title, points: -Math.round(loss), detail: `${f.severity} severity, ${Math.round(f.confidence * 100)}% confidence` });
+  }
+  return score;
+}
+
+const clamp = (n: number): number => Math.max(0, Math.min(100, Math.round(n)));
+
 /**
- * Calculate the health score from test gaps and config issues.
- * Scores are deterministic and explainable — based on real findings.
+ * Score repository health. Every deduction is recorded as a factor so the UI can explain it.
+ *
+ * - Testing: importance-weighted share of production files with test evidence (blended
+ *   with a parsed coverage percentage when one exists), less up to 30 points for API
+ *   routes no test calls.
+ * - Configuration: starts at 100; each issue removes a share of the remaining score
+ *   scaled by severity and confidence, so many small issues cannot drive it to zero.
+ * - Security: the same for security issues, plus up to 40% for untested auth code.
  */
-export function calculateHealthScore(
-  totalSourceFiles: number,
-  testGaps: TestGap[],
-  configIssues: ConfigIssue[],
-  testProfile: TestProfile,
-): HealthScore {
-  // Testing score: penalize for gaps weighted by confidence, reward for actual coverage or evidence
-  let gapPenalty = 0;
-  for (const gap of testGaps) {
-    const weight = gap.severity === 'critical' ? 10 : gap.severity === 'high' ? 6 : 2;
-    // Scale penalty directly by gap confidence
-    gapPenalty += weight * gap.confidence;
-  }
+export function calculateHealthScore(input: ScoreInput): HealthScore {
+  const factors: ScoreFactor[] = [];
+  const evidence = summarizeTestEvidence(input);
 
-  let baseScore = 0;
-  if (testProfile.coverage.status === 'ACTUAL_COVERAGE' && testProfile.coverage.percentage !== undefined) {
-    baseScore = testProfile.coverage.percentage;
-  } else if (testProfile.coverage.status === 'EVIDENCE_BASED' || testProfile.coverage.status === 'ACTUAL_COVERAGE') {
-    // A coverage report without a parseable percentage is scored on test evidence,
-    // rather than assuming a coverage figure that was never measured.
-    // Mature repos with thousands of test cases receive evidence-proportional base
-    if (testProfile.totalTestCount > 100 || testProfile.totalTestFiles > 50) {
-      baseScore = 80;
-    } else if (testProfile.totalTestCount > 20 || testProfile.totalTestFiles > 10) {
-      baseScore = 70;
-    } else {
-      baseScore = 60;
-    }
-  } else if (testProfile.totalTestFiles > 0) {
-    baseScore = 50;
+  // ── Testing ───────────────────────────────────────────────────────────────
+  let testing: number;
+  const pct = input.testProfile.coverage.status === 'ACTUAL_COVERAGE' ? input.testProfile.coverage.percentage : undefined;
+  if (evidence.productionFiles === 0) {
+    testing = 100;
+    factors.push({ dimension: 'testing', label: 'No production source files detected', points: 0 });
+  } else if (input.testProfile.totalTestFiles === 0) {
+    testing = 0;
+    factors.push({ dimension: 'testing', label: 'No automated tests found', points: -100, detail: `${evidence.productionFiles} production file(s) with no test suite` });
   } else {
-    baseScore = 15;
+    const ratioScore = evidence.weightedRatio * 100;
+    testing = pct !== undefined ? 0.6 * pct + 0.4 * ratioScore : ratioScore;
+    const tested = evidence.directlyTested + evidence.indirectlyTested + evidence.partiallyTested;
+    factors.push({
+      dimension: 'testing',
+      label: `Test evidence for ${tested} of ${evidence.productionFiles} production files`,
+      points: -Math.round(100 - ratioScore),
+      detail: `${Math.round(ratioScore)}% importance-weighted (${evidence.directlyTested} imported directly, ${evidence.indirectlyTested} indirectly, ${evidence.partiallyTested} by name or path)`,
+    });
+    if (pct !== undefined) {
+      factors.push({ dimension: 'testing', label: `Coverage report: ${pct}% of lines`, points: Math.round(0.6 * pct + 0.4 * ratioScore - ratioScore), detail: 'Blended 60/40 with test evidence' });
+    }
+    if (evidence.routes > 0 && evidence.untestedRoutes > 0) {
+      // A service's API is its contract: 30% of the testing score is route coverage.
+      const penalty = 30 * (evidence.untestedRoutes / evidence.routes);
+      testing -= penalty;
+      factors.push({ dimension: 'testing', label: `${evidence.untestedRoutes} of ${evidence.routes} API routes are never called by a test`, points: -Math.round(penalty) });
+    }
   }
 
-  const testing = Math.max(0, Math.min(100, Math.round(baseScore - gapPenalty)));
+  // ── Configuration ─────────────────────────────────────────────────────────
+  const configuration = applyFindings('configuration', input.configIssues.filter((i) => i.category !== 'security'), factors);
 
-  // Config score: penalize for issues
-  const criticalIssues = configIssues.filter((i) => i.severity === 'critical').length;
-  const highIssues = configIssues.filter((i) => i.severity === 'high').length;
-  const mediumIssues = configIssues.filter((i) => i.severity === 'medium').length;
-  const configPenalty = criticalIssues * 20 + highIssues * 10 + mediumIssues * 5;
-  const configuration = Math.max(0, Math.min(100, Math.round(100 - configPenalty)));
+  // ── Security ──────────────────────────────────────────────────────────────
+  let security = applyFindings('security', input.configIssues.filter((i) => i.category === 'security'), factors);
+  const authFiles = new Set(input.symbols
+    .filter((s) => s.sourceType === 'production' && s.importanceReasons.includes('authentication/authorization logic'))
+    .map((s) => s.filePath));
+  const untestedAuthFiles = input.mappings.filter((m) => authFiles.has(m.sourceFile)
+    && (m.coverageStatus === 'NOT_TESTED' || m.coverageStatus === 'NOT_ENOUGH_EVIDENCE')).length;
+  const authRoutes = input.testGaps.filter((g) => g.title.startsWith(ROUTE_GAP_PREFIX) && g.severity === 'critical').length;
+  const authSurface = authFiles.size + input.routes.filter((r) => r.sourceType === 'production' && isAuthRoute(r.path)).length;
+  if (authSurface > 0 && untestedAuthFiles + authRoutes > 0) {
+    const risk = Math.min(1, (untestedAuthFiles + authRoutes) / authSurface);
+    const loss = security * 0.4 * risk;
+    security -= loss;
+    factors.push({ dimension: 'security', label: `${untestedAuthFiles + authRoutes} authentication file(s)/route(s) without tests`, points: -Math.round(loss) });
+  }
+  const rejectionGaps = input.testGaps.filter((g) => g.category === 'missing_auth_test').slice(0, 3);
+  for (const g of rejectionGaps) {
+    const loss = security * 0.06 * g.confidence;
+    security -= loss;
+    factors.push({ dimension: 'security', label: g.title, points: -Math.round(loss) });
+  }
 
-  // Security score: penalize for security config issues + auth test gaps
-  const securityIssues = configIssues.filter((i) => i.category === 'security').length;
-  const authGaps = testGaps.filter((g) => g.category === 'missing_auth_test').length;
-  const securityPenalty = securityIssues * 25 + authGaps * 10;
-  const security = Math.max(0, Math.min(100, Math.round(100 - securityPenalty)));
+  const t = clamp(testing);
+  const c = clamp(configuration);
+  const sec = clamp(security);
+  const overall = clamp(t * 0.45 + c * 0.3 + sec * 0.25);
 
-  const overall = Math.round((testing * 0.4 + configuration * 0.35 + security * 0.25));
-
-  const grade =
+  const grade: HealthScore['grade'] =
     overall >= 90 ? 'A' :
-    overall >= 75 ? 'B' :
-    overall >= 60 ? 'C' :
-    overall >= 40 ? 'D' : 'F';
+    overall >= 80 ? 'B' :
+    overall >= 70 ? 'C' :
+    overall >= 60 ? 'D' : 'F';
+  const state: HealthState = overall >= 80 ? 'healthy' : overall >= 60 ? 'needs_attention' : 'critical';
 
-  const state: HealthState =
-    overall >= 75 ? 'healthy' :
-    overall >= 40 ? 'needs_attention' : 'critical';
-
-  return { overall, testing, configuration, security, grade, state };
+  factors.sort((a, b) => a.points - b.points);
+  return { overall, testing: t, configuration: c, security: sec, grade, state, factors };
 }

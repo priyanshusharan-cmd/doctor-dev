@@ -43,9 +43,12 @@ export default function TestingPage({ result }: Props) {
     ? testProfile.classifiedTestFiles.filter((f) => f.category === 'integration').reduce((acc, f) => acc + f.testCount, 0)
     : testProfile.suites.filter((s) => /integration|e2e|parallel|sequential/i.test(s.filePath)).reduce((acc, s) => acc + s.testCount, 0);
 
-  const untestedRoutes = routes.filter((r) =>
-    !result.testMappings.find((m) => m.sourceFile === r.filePath && m.relatedTests.length > 0)
-  );
+  // Same definition the score uses: routes whose path no test references
+  const untestedRouteKeys = new Set(testGaps
+    .filter((g) => g.title.startsWith('API route not tested: '))
+    .map((g) => `${g.filePath}:${g.lineStart}`));
+  const untestedRoutes = routes.filter((r) => untestedRouteKeys.has(`${r.filePath}:${r.line}`));
+  const evidence = result.testEvidence;
 
   const sortedGaps = [...testGaps].sort((a, b) => {
     if (sortBy === 'severity') return SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity];
@@ -95,6 +98,30 @@ export default function TestingPage({ result }: Props) {
             {covLabel}
           </span>
         </div>
+
+        {evidence && evidence.productionFiles > 0 && (
+          <div className="mb-3">
+            <div className="flex items-baseline justify-between mb-1.5">
+              <span className="text-xs text-gray-400">Production code with test evidence <span className="text-gray-600">(importance-weighted estimate)</span></span>
+              <span className="text-sm font-bold font-mono text-white">{Math.round(evidence.weightedRatio * 100)}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-gray-800/80 overflow-hidden flex">
+              {([
+                ['bg-green-500', evidence.directlyTested],
+                ['bg-blue-500', evidence.indirectlyTested],
+                ['bg-purple-500', evidence.partiallyTested],
+              ] as const).map(([cls, n]) => (
+                <div key={cls} className={cls} style={{ width: `${(n / evidence.productionFiles) * 100}%` }} />
+              ))}
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2 text-[11px]">
+              <span className="text-green-400">● {evidence.directlyTested} imported by tests</span>
+              <span className="text-blue-400">● {evidence.indirectlyTested} loaded indirectly</span>
+              <span className="text-purple-400">● {evidence.partiallyTested} matched by name/URL</span>
+              <span className="text-gray-500">● {evidence.untested} no evidence</span>
+            </div>
+          </div>
+        )}
 
         {hasNumericCov ? (
           <div className="h-3 rounded-full bg-gray-800/80 overflow-hidden mb-2">

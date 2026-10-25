@@ -9,8 +9,9 @@
     "build": "npm run clean && tsc -p tsconfig.build.json",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run src/app.test.ts src/regressions.test.ts && ts-node src/tests/benchmarks.test.ts",
-    "lint": "echo 'lint ok'"
+    "test": "vitest run src/app.test.ts src/regressions.test.ts src/engine.test.ts && ts-node src/tests/benchmarks.test.ts",
+    "lint": "echo 'lint ok'",
+    "eval": "ts-node --transpile-only src/tests/evalRepos.ts"
   },
   "dependencies": {
     "cors": "^2.8.5",

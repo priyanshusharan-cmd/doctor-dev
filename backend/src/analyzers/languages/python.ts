@@ -3,7 +3,13 @@ import fs from 'fs';
 import { LanguageAdapter, ParseResult } from './index';
 import { readFileSafe, relativePath } from '../../utils/security';
 import { getSourceType } from '../codeAnalyzer';
-import type { TestProfile, TestSuite, CodeSymbol, RouteInfo, SymbolImportance } from '../../types';
+import { scoreImportance } from '../importance';
+import type { TestProfile, TestSuite, CodeSymbol, RouteInfo, SymbolImportance, SourceType } from '../../types';
+
+function importanceOf(name: string, filePath: string, isExported: boolean, sourceType: SourceType, isRouteHandler: boolean): { importance: SymbolImportance; importanceReasons: string[] } {
+  const { importance, reasons } = scoreImportance({ name, filePath, body: '', isExported, sourceType, isRouteHandler });
+  return { importance, importanceReasons: reasons };
+}
 
 export const PythonAdapter: LanguageAdapter = {
   language: 'python',
@@ -28,11 +34,24 @@ export const PythonAdapter: LanguageAdapter = {
 
       let currentClass: string | null = null;
       let classIndent = -1;
+      let underRouteDecorator = false;
+      let inDocstring = false;
 
       lines.forEach((line, idx) => {
         const lineNum = idx + 1;
         const trimmed = line.trim();
         const indent = line.length - line.trimStart().length;
+
+        // Code examples inside docstrings ("@app.route('/')") are not real definitions
+        const quotes = (trimmed.match(/"""|'''/g) ?? []).length;
+        if (inDocstring) {
+          if (quotes % 2 === 1) inDocstring = false;
+          return;
+        }
+        if (quotes % 2 === 1) {
+          inDocstring = true;
+          return;
+        }
 
         // Leaving the class body: any code at or above the class's own indentation ends it.
         // Blank lines, comments, and decorators don't end a class body.
@@ -55,8 +74,7 @@ export const PythonAdapter: LanguageAdapter = {
             lineStart: lineNum,
             lineEnd: lineNum,
             isExported: !className.startsWith('_'),
-            importance: className.includes('Service') || className.includes('Controller') || className.includes('Model') ? 'high' : 'medium',
-            importanceReasons: ['Python class declaration'],
+            ...importanceOf(className, rel, !className.startsWith('_'), sourceType, false),
             isAsync: false,
             paramCount: 0,
           });
@@ -71,10 +89,8 @@ export const PythonAdapter: LanguageAdapter = {
           const isAsync = trimmed.startsWith('async ');
           const isPrivate = fnName.startsWith('_') && !fnName.startsWith('__init__');
 
-          const importance: SymbolImportance =
-            /auth|login|token|password|payment|charge/i.test(fnName) ? 'critical' :
-            /create|update|delete|save|handle/i.test(fnName) ? 'high' :
-            isPrivate ? 'low' : 'medium';
+          const scored = importanceOf(currentClass ? `${currentClass}.${fnName}` : fnName, rel, !isPrivate, sourceType, underRouteDecorator);
+          underRouteDecorator = false;
 
           symbols.push({
             name: currentClass ? `${currentClass}.${fnName}` : fnName,
@@ -84,8 +100,7 @@ export const PythonAdapter: LanguageAdapter = {
             lineStart: lineNum,
             lineEnd: lineNum,
             isExported: !isPrivate,
-            importance,
-            importanceReasons: [`Python ${currentClass ? 'method' : 'function'}`],
+            ...scored,
             isAsync,
             paramCount: rawParams.length,
           });
@@ -104,6 +119,7 @@ export const PythonAdapter: LanguageAdapter = {
           const methodOverride = trimmed.match(/methods\s*=\s*\[\s*['"]([A-Za-z]+)['"]/i);
           if (methodOverride) method = methodOverride[1].toUpperCase();
 
+          underRouteDecorator = true;
           routes.push({
             method,
             path: routePath,

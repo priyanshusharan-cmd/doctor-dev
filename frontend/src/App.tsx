@@ -184,7 +184,7 @@ export default function App() {
       </main>
       <footer className="border-t border-gray-800/40 py-4 mt-8">
         <div className="max-w-screen-xl mx-auto px-6 flex items-center justify-between text-xs text-gray-700">
-          <span>Doctor Dev · AI Software Health Checker</span>
+          <span>Doctor Dev · Repository Health Checker</span>
           <a href="https://github.com/priyanshusharan-cmd/doctor-dev" target="_blank" rel="noopener noreferrer"
             className="hover:text-gray-400 transition-colors">
             GitHub

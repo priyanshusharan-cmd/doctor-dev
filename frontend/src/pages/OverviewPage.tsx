@@ -1,4 +1,5 @@
 import HealthScoreCard from '../components/HealthScoreCard';
+import ScoreBreakdown from '../components/ScoreBreakdown';
 import RepoOverviewCard from '../components/RepoOverviewCard';
 import type { AnalysisResult } from '../types';
 import { FlaskConical, Settings2, Clock, AlertTriangle, TrendingUp, ArrowRight, Layers } from 'lucide-react';
@@ -43,9 +44,10 @@ export default function OverviewPage({ result, onTabChange }: Props) {
 
   const criticalGaps = testGaps.filter((g) => g.severity === 'critical').length;
   const criticalIssues = configHealth.issues.filter((i) => i.severity === 'critical').length;
-  const untestedRoutes = routes.filter((r) =>
-    !result.testMappings.find((m) => m.sourceFile === r.filePath && m.relatedTests.length > 0)
-  ).length;
+  const evidence = result.testEvidence;
+  const untestedRoutes = evidence?.untestedRoutes
+    ?? testGaps.filter((g) => g.title.startsWith('API route not tested: ')).length;
+  const routeTotal = evidence?.routes ?? routes.length;
 
   const hasNumericCov = testProfile.coverage.percentage !== undefined && testProfile.coverage.percentage !== null;
   const covPct = hasNumericCov ? testProfile.coverage.percentage! : undefined;
@@ -59,9 +61,14 @@ export default function OverviewPage({ result, onTabChange }: Props) {
     covColor = hasNumericCov
       ? ((covPct ?? 0) >= 70 ? 'text-green-400' : (covPct ?? 0) >= 40 ? 'text-yellow-400' : 'text-red-400')
       : 'text-blue-400';
+  } else if (evidence && evidence.productionFiles > 0 && testProfile.totalTestFiles > 0) {
+    const ratio = Math.round(evidence.weightedRatio * 100);
+    covLabel = `${ratio}%`;
+    covSub = 'Code with test evidence (estimate)';
+    covColor = ratio >= 70 ? 'text-green-400' : ratio >= 40 ? 'text-yellow-400' : 'text-red-400';
   } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
-    covLabel = hasNumericCov ? `${covPct}%` : 'Evidence-based';
-    covSub = hasNumericCov ? 'Estimated from tests' : 'No numeric % available';
+    covLabel = 'Evidence-based';
+    covSub = 'No numeric % available';
     covColor = 'text-purple-400';
   } else {
     covLabel = 'Unavailable';
@@ -76,6 +83,18 @@ export default function OverviewPage({ result, onTabChange }: Props) {
         <div className="lg:col-span-2"><HealthScoreCard score={healthScore} /></div>
         <div className="lg:col-span-3"><RepoOverviewCard meta={meta} /></div>
       </div>
+
+      <ScoreBreakdown score={healthScore} />
+
+      {result.warnings && result.warnings.length > 0 && (
+        <div className="flex items-start gap-3 p-3 rounded-xl border border-yellow-900/50 bg-yellow-950/20 text-xs text-yellow-200">
+          <AlertTriangle className="w-4 h-4 text-yellow-400 flex-shrink-0" />
+          <div>
+            <p className="font-semibold mb-1">Part of the analysis was skipped, so this score may be incomplete:</p>
+            <ul className="list-disc pl-4 space-y-0.5 text-yellow-300/80">{result.warnings.map((w) => <li key={w}>{w}</li>)}</ul>
+          </div>
+        </div>
+      )}
 
       {/* Key metrics */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -94,7 +113,7 @@ export default function OverviewPage({ result, onTabChange }: Props) {
           onClick={() => onTabChange('configuration')}
         />
         <MetricCard
-          label="Test Coverage"
+          label={testProfile.coverage.status === 'ACTUAL_COVERAGE' ? 'Test Coverage' : 'Test Evidence'}
           value={covLabel}
           sub={covSub}
           color={covColor}
@@ -102,7 +121,7 @@ export default function OverviewPage({ result, onTabChange }: Props) {
         <MetricCard
           label="Untested Routes"
           value={untestedRoutes}
-          sub={`of ${routes.length} API routes`}
+          sub={`of ${routeTotal} API routes`}
           color={untestedRoutes === 0 ? 'text-green-400' : 'text-orange-400'}
         />
       </div>
@@ -155,8 +174,8 @@ export default function OverviewPage({ result, onTabChange }: Props) {
               <p className="text-xs text-gray-600 mt-0.5">test files</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-black text-white tabular-nums">{hasNumericCov ? `${covPct}%` : 'Unavailable'}</p>
-              <p className="text-xs text-gray-600 mt-0.5">coverage</p>
+              <p className="text-2xl font-black text-white tabular-nums">{covLabel}</p>
+              <p className="text-xs text-gray-600 mt-0.5">{hasNumericCov ? 'coverage' : 'test evidence'}</p>
             </div>
           </div>
           {/* mini severity row */}

@@ -21,7 +21,6 @@ doctor-dev/
 ├── backend/           Node.js + TypeScript + Express
 ├── demo-repository/   Sample repo used for hackathon demo
 ├── docs/              Architecture + analysis engine docs
-├── bob_sessions/      IBM Bob IDE session screenshots/exports
 ├── AGENTS.md          ← this file
 ├── DOCTOR_DEV_STATUS.md Phase tracking
 └── README.md
@@ -137,17 +136,6 @@ Repository
 - Backend route tests must cover success and error paths.
 - Use `vitest` or `jest` for unit tests.
 - Test files live adjacent to their source (`*.test.ts`).
-
----
-
-## IBM Bob Development Rules
-
-- IBM Bob IDE is used actively throughout the development of this project.
-- All significant Bob sessions (code generation, analysis, refactoring) must be documented.
-- Bob session artifacts (screenshots, exported session content) are stored in `bob_sessions/`.
-- Document Bob's contribution in `docs/bob-usage.md`.
-- Do not fabricate Bob usage. Only record real sessions.
-- Bob is used as a senior pair-programmer: architecture decisions, implementation, review.
 
 ---
 

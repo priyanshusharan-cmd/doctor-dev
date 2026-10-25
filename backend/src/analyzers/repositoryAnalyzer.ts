@@ -14,12 +14,12 @@ import type {
 
 const SOURCE_EXTENSIONS = ['ts', 'tsx', 'js', 'jsx', 'mjs', 'cjs', 'py', 'java', 'go', 'rs', 'rb', 'php', 'cpp', 'c', 'h', 'hpp'];
 const TEST_PATTERNS = [
-  '**/*.test.ts', '**/*.test.tsx', '**/*.test.js', '**/*.test.jsx',
-  '**/*.spec.ts', '**/*.spec.tsx', '**/*.spec.js', '**/*.spec.jsx',
-  '**/__tests__/**/*.{ts,tsx,js,jsx}',
-  '**/test/**/*.{ts,tsx,js,jsx}',
-  '**/tests/**/*.{ts,tsx,js,jsx}',
-  '**/*_test.py', '**/test_*.py',
+  '**/*.{test,spec}.{ts,tsx,js,jsx,mjs,cjs,mts,cts}',
+  '**/__tests__/**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}',
+  '**/test/**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}',
+  '**/test-d/**/*.{ts,tsx,mts,cts}',
+  '**/tests/**/*.{ts,tsx,js,jsx,mjs,cjs,mts,cts}',
+  '**/*_test.py', '**/test_*.py', '**/tests/**/*.py', '**/test/**/*.py', '**/conftest.py',
   '**/*Test.java', '**/*Tests.java',
   '**/*_test.go',
   '**/tests/**/*.rs',
@@ -61,7 +61,14 @@ const IGNORE_DIRS = [
   '**/.venv/**',
   '**/target/**',
   '**/vendor/**',
+  '**/third_party/**',
+  '**/__generated__/**',
+  '**/.tox/**',
+  '**/site-packages/**',
 ];
+
+/** Not source code: type declarations, bundles, and minified output. */
+const NON_SOURCE_FILES = ['**/*.d.ts', '**/*.d.mts', '**/*.d.cts', '**/*.min.js', '**/*.bundle.js', '**/*-min.js'];
 
 /** Detect primary ecosystem from root files and language presence */
 export function detectPrimaryEcosystem(repoPath: string, language: Language): string {
@@ -445,17 +452,19 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
   const sourceGlob = SOURCE_EXTENSIONS.map((ext) => `**/*.${ext}`);
   const allSourceFiles = await fg(sourceGlob, {
     cwd: repoPath,
-    ignore: IGNORE_DIRS,
+    ignore: [...IGNORE_DIRS, ...NON_SOURCE_FILES],
     absolute: false,
     followSymbolicLinks: false,
+    suppressErrors: true,
   });
 
   // ── 2. Test files, fixtures, helpers, benchmarks separation ──────────────
   const rawTestFiles = await fg(TEST_PATTERNS, {
     cwd: repoPath,
-    ignore: IGNORE_DIRS,
+    ignore: [...IGNORE_DIRS, ...NON_SOURCE_FILES],
     absolute: false,
     followSymbolicLinks: false,
+    suppressErrors: true,
   });
 
   const testFiles: string[] = [];
@@ -469,7 +478,9 @@ export async function analyzeRepository(repoPath: string): Promise<RepositoryPro
     const lower = norm.toLowerCase();
     if (/(^|\/)(fixtures?|__fixtures__|samples?|sandbox|mocks?|__mocks__|e2e)\//.test(lower)) {
       fixtureFiles.push(norm);
-    } else if (/(^|\/)(common|helpers?|support)\//.test(lower)) {
+    } else if (/(^|\/)(common|helpers?|support)\//.test(lower)
+      // Python modules under tests/ that aren't test_*.py / *_test.py are helpers (conftest, servers, utils)
+      || (lower.endsWith('.py') && !/(^|\/)(test_[^/]*|[^/]*_test)\.py$/.test(lower))) {
       helperFiles.push(norm);
     } else if (/(^|\/)(benchmarks?|bench)\//.test(lower)) {
       benchmarkFiles.push(norm);

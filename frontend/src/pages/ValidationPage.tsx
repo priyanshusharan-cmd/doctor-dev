@@ -100,7 +100,7 @@ export default function ValidationPage({ result }: Props) {
             <FileCode2 className="w-8 h-8 text-gray-700 mx-auto mb-3" />
             <p className="text-sm text-gray-500">No tests were generated.</p>
             <p className="text-xs text-gray-600 mt-1">
-              Enable <span className="text-gray-400 font-medium">AI Test Gen</span> and re-analyse.
+              Enable <span className="text-gray-400 font-medium">Test skeletons</span> and re-analyse. Skeletons are written for critical and high gaps only.
             </p>
           </div>
         ) : (

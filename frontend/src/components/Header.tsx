@@ -38,7 +38,7 @@ export default function Header({ activeTab, onTabChange, hasResult, onHistoryCli
                 </span>
                 <span className="hidden sm:flex items-center gap-1.5 text-xs text-gray-600 font-medium mt-0.5">
                   <span className="w-1 h-1 rounded-full bg-gray-700" />
-                  AI Software Health Checker
+                  Repository Health Checker
                 </span>
               </div>
             </button>

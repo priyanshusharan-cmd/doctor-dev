@@ -1,15 +1,11 @@
 import path from 'path';
 import { Project, SyntaxKind } from 'ts-morph';
-import { relativePath } from '../utils/security';
+import { readFileSafe, relativePath } from '../utils/security';
+import { scoreImportance } from './importance';
 import type { CodeSymbol, RouteInfo, SymbolKind, SymbolImportance, SourceType } from '../types';
 
 // ─── Importance signals ───────────────────────────────────────────────────────
 
-const AUTH_PATTERNS = /\b(auth|login|logout|register|signup|password|jwt|token|session|permission|role|acl|guard|middleware)\b/i;
-const DB_PATTERNS = /\b(db|database|query|model|repository|schema|migration|prisma|mongoose|sequelize|knex|sql|insert|update|delete|find|save)\b/i;
-const PAYMENT_PATTERNS = /\b(payment|stripe|paypal|checkout|charge|invoice|billing|subscription|plan|price)\b/i;
-const ROUTE_PATTERNS = /\b(router|app|route)\.(get|post|put|patch|delete|use|all)\b/i;
-const CRITICAL_NAMES = /^(main|bootstrap|init|start|setup|configure|createApp|createServer)\b/i;
 const HTTP_CLIENT_RECEIVERS = /^(axios|http|https|fetch|client|apiClient|httpClient|superagent|ky|got|\$http|instance|cache|map|params|searchParams|headers|storage|localStorage|sessionStorage)$/i;
 const INLINE_FUNCTION_KINDS = new Set([SyntaxKind.ArrowFunction, SyntaxKind.FunctionExpression]);
 const HANDLER_KINDS = new Set([
@@ -17,54 +13,37 @@ const HANDLER_KINDS = new Set([
   SyntaxKind.PropertyAccessExpression, SyntaxKind.ArrayLiteralExpression,
 ]);
 
+/** Importance of a symbol; route handlers registered in the same file get extra weight. */
 function scoreSymbol(
   name: string,
   filePath: string,
-  bodyText: string,
+  body: string,
   isExported: boolean,
-  paramCount: number,
+  _paramCount: number,
   sourceType: SourceType,
+  handlers: Set<string>,
 ): { importance: SymbolImportance; reasons: string[] } {
-  const reasons: string[] = [];
-  let score = 0;
+  return scoreImportance({ name, filePath, body, isExported, sourceType, isRouteHandler: handlers.has(name.split('.').pop() ?? name) });
+}
 
-  const combined = `${name} ${filePath} ${bodyText}`;
+/** Files parsed with ts-morph per analysis; the import graph covers everything else. */
+const MAX_AST_FILES = 600;
+const MAX_AST_FILE_BYTES = 400_000;
 
-  if (AUTH_PATTERNS.test(combined)) { reasons.push('authentication/authorization logic'); score += 3; }
-  if (DB_PATTERNS.test(combined)) { reasons.push('database operation'); score += 2; }
-  if (PAYMENT_PATTERNS.test(combined)) { reasons.push('payment logic'); score += 3; }
-  if (ROUTE_PATTERNS.test(bodyText)) { reasons.push('route handler'); score += 2; }
-  if (CRITICAL_NAMES.test(name)) { reasons.push('application lifecycle'); score += 2; }
-  if (isExported) { reasons.push('exported — part of public API'); score += 1; }
-  if (paramCount > 3) { reasons.push('complex signature'); score += 1; }
-
-  // File path signals
-  if (/\/(controllers?|handlers?|routes?)\//i.test(filePath)) { reasons.push('controller/route file'); score += 2; }
-  if (/\/(services?|usecases?|domain)\//i.test(filePath)) { reasons.push('service layer'); score += 1; }
-  if (/\/(middleware|guards?)\//i.test(filePath)) { reasons.push('middleware'); score += 1; }
-
-  // Penalize non-production code
-  if (sourceType === 'examples' || sourceType === 'fixtures' || sourceType === 'benchmarks' || sourceType === 'documentation') {
-    score -= 5;
-    reasons.push(`${sourceType} code`);
-  }
-
-  const importance: SymbolImportance =
-    score >= 5 ? 'critical' :
-    score >= 3 ? 'high' :
-    score >= 1 ? 'medium' :
-    'low';
-
-  return { importance, reasons: reasons.slice(0, 4) };
+/** Bundled or minified code has extremely long lines and no useful symbols. */
+export function isMinified(text: string): boolean {
+  const sample = text.slice(0, 20_000);
+  const lines = sample.split('\n');
+  return lines.some((l) => l.length > 2_000) || (sample.length > 5_000 && lines.length < 5);
 }
 
 export function getSourceType(filePath: string): SourceType {
   const normalized = filePath.replace(/\\/g, '/').toLowerCase();
   if (/(^|\/)(examples?|samples?|sandbox)\//.test(normalized)) return 'examples';
-  if (/(^|\/)benchmarks?\//.test(normalized)) return 'benchmarks';
+  if (/(^|\/)(benchmarks?|bench|perf)(\/|\.[a-z]+$)/.test(normalized)) return 'benchmarks';
   if (/(^|\/)(fixtures?|mocks?|__mocks__|e2e)\//.test(normalized)) return 'fixtures';
   if (/(^|\/)docs?\//.test(normalized)) return 'documentation';
-  if (/(^|\/)(tests?|__tests__|specs?)\//.test(normalized) || /\.(test|spec)\./.test(normalized)) return 'tests';
+  if (/(^|\/)(tests?|__tests__|specs?|test-d|test-types|integration|e2e-tests?)\//.test(normalized) || /\.(test|spec|test-d)\./.test(normalized)) return 'tests';
   if (/(^|\/)generated\//.test(normalized)) return 'generated';
   if (/(^|\/)(build|scripts?|tools?)\//.test(normalized)) return 'build';
   if (/(^|\/)configs?\//.test(normalized) || filePath.includes('.config.')) return 'configuration';
@@ -147,31 +126,39 @@ export function analyzeCode(
   const jsTsFiles = sourceFiles.filter((f) => /\.(ts|tsx|js|jsx|mjs|cjs)$/i.test(f));
   if (jsTsFiles.length === 0) return { symbols, routes };
 
-  // ts-morph project — we add files manually, no tsconfig needed
+  // Parse from text in an in-memory project: TypeScript never touches the disk, loads no
+  // lib files, and never follows imports, so one bad file cannot slow or break the run.
   const project = new Project({
-    useInMemoryFileSystem: false,
+    useInMemoryFileSystem: true,
     skipAddingFilesFromTsConfig: true,
-    compilerOptions: { allowJs: true },
+    skipLoadingLibFiles: true,
+    skipFileDependencyResolution: true,
+    compilerOptions: { allowJs: true, noLib: true, noResolve: true },
   });
 
-  // Only analyse up to 150 source files to keep performance reasonable
-  const filesToAnalyze = jsTsFiles.slice(0, 150);
+  // Production code first, so the cap never crowds it out with examples or scripts
+  const filesToAnalyze = [...jsTsFiles]
+    .sort((a, b) => Number(getSourceType(a) !== 'production') - Number(getSourceType(b) !== 'production'))
+    .slice(0, MAX_AST_FILES);
 
   for (const rel of filesToAnalyze) {
-    const abs = path.join(repoPath, rel);
+    const text = readFileSafe(path.join(repoPath, rel), MAX_AST_FILE_BYTES);
+    if (!text || isMinified(text)) continue;
     try {
-      project.addSourceFileAtPath(abs);
+      project.createSourceFile(`/repo/${rel}`, text, { overwrite: true });
     } catch {
-      // Skip files that fail to parse (binary, unreadable, etc.)
+      // Skip files that fail to parse
     }
   }
 
   for (const sourceFile of project.getSourceFiles()) {
-    const filePath = relativePath(repoPath, sourceFile.getFilePath());
+    const filePath = sourceFile.getFilePath().replace(/^\/repo\//, '');
     const sourceType = getSourceType(filePath);
 
     // ── Routes ────────────────────────────────────────────────────────────────
-    routes.push(...extractRoutes(sourceFile, repoPath));
+    const fileRoutes = extractRoutes(sourceFile, '/repo');
+    routes.push(...fileRoutes);
+    const handlers = new Set(fileRoutes.map((r) => r.handlerName).filter((n): n is string => !!n));
 
     // ── Functions ─────────────────────────────────────────────────────────────
     sourceFile.getFunctions().forEach((fn) => {
@@ -181,7 +168,7 @@ export function analyzeCode(
       const body = fn.getBodyText() ?? '';
       const isExported = fn.isExported() || fn.isDefaultExport();
       const params = fn.getParameters().length;
-      const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params, sourceType);
+      const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params, sourceType, handlers);
       const start = fn.getStartLineNumber();
       const end = fn.getEndLineNumber();
 
@@ -207,7 +194,7 @@ export function analyzeCode(
 
       const isExported = cls.isExported() || cls.isDefaultExport();
       const clsBody = cls.getMembers().map((m) => m.getText()).join(' ');
-      const { importance, reasons } = scoreSymbol(name, filePath, clsBody, isExported, 0, sourceType);
+      const { importance, reasons } = scoreSymbol(name, filePath, clsBody, isExported, 0, sourceType, handlers);
 
       symbols.push({
         name,
@@ -230,7 +217,7 @@ export function analyzeCode(
         const mExported = isExported; // methods inherit class export
         const mParams = method.getParameters().length;
         const { importance: mImp, reasons: mReasons } = scoreSymbol(
-          `${name}.${mName}`, filePath, mBody, mExported, mParams, sourceType
+          `${name}.${mName}`, filePath, mBody, mExported, mParams, sourceType, handlers
         );
 
         symbols.push({
@@ -266,7 +253,7 @@ export function analyzeCode(
         init.getKind() === SyntaxKind.ArrowFunction
           ? (init.asKind(SyntaxKind.ArrowFunction)?.getParameters().length ?? 0)
           : (init.asKind(SyntaxKind.FunctionExpression)?.getParameters().length ?? 0);
-      const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params, sourceType);
+      const { importance, reasons } = scoreSymbol(name, filePath, body, isExported, params, sourceType, handlers);
 
       symbols.push({
         name,
