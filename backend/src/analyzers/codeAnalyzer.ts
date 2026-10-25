@@ -10,6 +10,12 @@ const DB_PATTERNS = /\b(db|database|query|model|repository|schema|migration|pris
 const PAYMENT_PATTERNS = /\b(payment|stripe|paypal|checkout|charge|invoice|billing|subscription|plan|price)\b/i;
 const ROUTE_PATTERNS = /\b(router|app|route)\.(get|post|put|patch|delete|use|all)\b/i;
 const CRITICAL_NAMES = /^(main|bootstrap|init|start|setup|configure|createApp|createServer)\b/i;
+const HTTP_CLIENT_RECEIVERS = /^(axios|http|https|fetch|client|apiClient|httpClient|superagent|ky|got|\$http|instance|cache|map|params|searchParams|headers|storage|localStorage|sessionStorage)$/i;
+const INLINE_FUNCTION_KINDS = new Set([SyntaxKind.ArrowFunction, SyntaxKind.FunctionExpression]);
+const HANDLER_KINDS = new Set([
+  ...INLINE_FUNCTION_KINDS, SyntaxKind.Identifier, SyntaxKind.CallExpression,
+  SyntaxKind.PropertyAccessExpression, SyntaxKind.ArrayLiteralExpression,
+]);
 
 function scoreSymbol(
   name: string,
@@ -86,20 +92,28 @@ function extractRoutes(sourceFile: ReturnType<InstanceType<typeof Project>['addS
     const expr = call.getExpression();
     const exprText = expr.getText();
 
-    // Match: router.get / app.post / this.router.delete etc.
-    const match = exprText.match(/(?:^|\.)(get|post|put|patch|delete|all|use)$/i);
+    // Match: router.get / app.post / this.router.delete etc. `.use()` mounts middleware or
+    // sub-routers rather than defining an endpoint, so it is not treated as a route.
+    const match = exprText.match(/(?:^|\.)(get|post|put|patch|delete|all)$/i);
     if (!match) return;
 
     const args = call.getArguments();
-    if (args.length === 0) return;
+    // A route registration needs a path and at least one handler.
+    if (args.length < 2) return;
 
     const firstArg = args[0];
-    const routePath = firstArg.getKind() === SyntaxKind.StringLiteral
-      ? firstArg.asKind(SyntaxKind.StringLiteral)?.getLiteralValue() ?? firstArg.getText()
-      : firstArg.getText();
+    if (firstArg.getKind() !== SyntaxKind.StringLiteral && firstArg.getKind() !== SyntaxKind.NoSubstitutionTemplateLiteral) return;
+    const routePath = firstArg.getText().slice(1, -1);
+    if (!routePath.startsWith('/')) return;
 
-    // Skip non-path strings (middleware-only registrations)
-    if (!routePath.startsWith('/') && !routePath.startsWith("'") && !routePath.startsWith('"')) return;
+    const rest = args.slice(1);
+    if (!rest.some((a) => HANDLER_KINDS.has(a.getKind()))) return;
+
+    // HTTP clients (axios.get('/users'), client.post('/login', body)) call routes rather than
+    // define them. A client call never passes an inline function, so those still count.
+    const receiver = exprText.split('.').slice(-2, -1)[0] ?? '';
+    const hasInlineHandler = rest.some((a) => INLINE_FUNCTION_KINDS.has(a.getKind()));
+    if (HTTP_CLIENT_RECEIVERS.test(receiver) && !hasInlineHandler) return;
 
     const method = match[1].toUpperCase() as RouteInfo['method'];
     const line = node.getStartLineNumber();

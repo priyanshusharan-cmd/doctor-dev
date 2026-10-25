@@ -1,7 +1,7 @@
 import path from 'path';
 import fs from 'fs';
 import fg from 'fast-glob';
-import { readFileSafe, parseJsonSafe, fileExists, relativePath, repoName } from '../utils/security';
+import { readFileSafe, parseJsonSafe, fileExists, relativePath, repoName, stripUrlCredentials } from '../utils/security';
 import type {
   RepositoryProfile,
   Language,
@@ -398,12 +398,14 @@ function detectFramework(
   return undefined;
 }
 
-/** Detect git remote from .git/config. */
+/** Detect git remote from .git/config, with any embedded credentials removed. */
 function detectGitRemote(repoPath: string): string | undefined {
   const gitConfig = readFileSafe(path.join(repoPath, '.git', 'config'));
   if (!gitConfig) return undefined;
   const match = gitConfig.match(/url\s*=\s*(.+)/);
-  return match?.[1]?.trim();
+  const remote = match?.[1]?.trim();
+  // Remotes like https://user:ghp_token@github.com/... must never reach the UI or reports.
+  return remote ? stripUrlCredentials(remote) : undefined;
 }
 
 /** Find likely entry point files. */

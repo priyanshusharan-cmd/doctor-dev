@@ -12,6 +12,8 @@ import HistoryDrawer from './components/HistoryDrawer';
 import { api } from './api/client';
 import type { ActiveTab, AnalysisStatus, AnalysisResult } from './types';
 
+const MAX_POLL_FAILURES = 4;
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
   const [analysisId, setAnalysisId] = useState<string | null>(null);
@@ -23,6 +25,9 @@ export default function App() {
   const [isStarting, setIsStarting] = useState(false);
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The analysis the UI is showing; responses for any other id are stale and ignored.
+  const activeIdRef = useRef<string | null>(null);
+  const pollFailuresRef = useRef(0);
 
   const stopPolling = useCallback(() => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -30,9 +35,16 @@ export default function App() {
 
   const startPolling = useCallback((id: string) => {
     stopPolling();
+    activeIdRef.current = id;
+    pollFailuresRef.current = 0;
+    let inFlight = false;
     pollRef.current = setInterval(async () => {
+      if (inFlight) return; // never stack requests on a slow server
+      inFlight = true;
       try {
         const data = await api.getAnalysis(id);
+        if (activeIdRef.current !== id) return;
+        pollFailuresRef.current = 0;
         setStatus(data.status as AnalysisStatus);
         setStatusLabel(data.statusLabel);
         if (data.error) setError(data.error);
@@ -45,9 +57,16 @@ export default function App() {
           stopPolling();
         }
       } catch (err) {
-        stopPolling();
-        setError(err instanceof Error ? err.message : 'Polling failed');
-        setStatus('error');
+        if (activeIdRef.current !== id) return;
+        // Tolerate brief network blips; give up after several consecutive failures.
+        pollFailuresRef.current += 1;
+        if (pollFailuresRef.current >= MAX_POLL_FAILURES) {
+          stopPolling();
+          setError(err instanceof Error ? err.message : 'Polling failed');
+          setStatus('error');
+        }
+      } finally {
+        inFlight = false;
       }
     }, 1200);
   }, [stopPolling]);
@@ -83,6 +102,7 @@ export default function App() {
 
   async function handleLoadAnalysis(id: string) {
     stopPolling();
+    activeIdRef.current = id;
     setError(null);
     setStatus('pending');
     try {
@@ -106,6 +126,7 @@ export default function App() {
 
   function handleGoHome() {
     stopPolling();
+    activeIdRef.current = null;
     setAnalysisId(null);
     setStatus('pending');
     setStatusLabel('');

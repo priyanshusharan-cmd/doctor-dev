@@ -1,0 +1,174 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" width="1200" height="760" role="img" aria-labelledby="title desc">
+  <title id="title">Doctor Dev architecture</title>
+  <desc id="desc">Animated data flow: the React dashboard calls the Express API, which runs secure ingestion, repository profiling, language adapters, TestPilot and ConfigDoctor, then prioritization and scoring. Results land in the in-memory store and are polled back by the dashboard or exported as reports. An opt-in test runner executes validated local test commands.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b14"/>
+      <stop offset="1" stop-color="#0f1530"/>
+    </linearGradient>
+    <pattern id="dots" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r="1.2" fill="#1e293b"/>
+    </pattern>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3.5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#475569"/>
+    </marker>
+    <style>
+      .t { font-family: Inter, 'Segoe UI', -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; }
+      .m { font-family: 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace; }
+      .title { font-size: 16px; font-weight: 800; fill: #f1f5f9; }
+      .sub { font-size: 12.5px; fill: #94a3b8; }
+      .lbl { font-size: 11.5px; fill: #64748b; }
+      .edge { fill: none; stroke: #334155; stroke-width: 2; }
+      .flow { fill: none; stroke-width: 2.2; stroke-dasharray: 6 10; animation: flow 1.1s linear infinite; }
+      .flow.slow { animation-duration: 1.8s; }
+      @keyframes flow { to { stroke-dashoffset: -32; } }
+      .node { animation: breathe 4s ease-in-out infinite; }
+      @keyframes breathe { 0%,100% { stroke-opacity: 0.55; } 50% { stroke-opacity: 1; } }
+      @media (prefers-reduced-motion: reduce) { .flow, .node { animation: none; } }
+    </style>
+
+    <!-- Edge geometry, shared by the static line, the flowing dashes, and the packets -->
+    <path id="e-req"   d="M240 352 H300"/>
+    <path id="e-poll"  d="M300 398 H240"/>
+    <path id="e-ingest" d="M400 330 V80 H560"/>
+    <path id="e-prof"  d="M700 120 V160"/>
+    <path id="e-ast"   d="M700 240 V280"/>
+    <path id="e-tp"    d="M640 360 V410"/>
+    <path id="e-cd"    d="M760 360 V410"/>
+    <path id="e-tp2"   d="M615 500 V520 H660 V550"/>
+    <path id="e-cd2"   d="M785 500 V520 H740 V550"/>
+    <path id="e-score" d="M840 590 H880 V375 H920"/>
+    <path id="e-run"   d="M840 200 H920"/>
+    <path id="e-run2"  d="M1040 230 V330"/>
+    <path id="e-rep"   d="M1040 420 V500"/>
+    <path id="e-back"  d="M1160 375 H1180 V712 H400 V420"/>
+  </defs>
+
+  <rect width="1200" height="760" rx="28" fill="url(#bg)"/>
+  <rect width="1200" height="760" rx="28" fill="url(#dots)"/>
+
+  <!-- Heading -->
+  <text class="t" x="40" y="70" font-size="30" font-weight="900" fill="#f8fafc" letter-spacing="-0.5">Architecture</text>
+  <text class="t" x="40" y="100" font-size="15" fill="#94a3b8">One Node service · async pipeline · polling UI</text>
+  <g class="t" font-size="12.5" transform="translate(40 130)">
+    <circle cx="6" cy="0" r="5" fill="#60a5fa"/><text x="18" y="4" fill="#94a3b8">request</text>
+    <circle cx="96" cy="0" r="5" fill="#a78bfa"/><text x="108" y="4" fill="#94a3b8">analysis</text>
+    <circle cx="190" cy="0" r="5" fill="#4ade80"/><text x="202" y="4" fill="#94a3b8">results</text>
+    <line x1="0" y1="26" x2="26" y2="26" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5 5"/><text x="34" y="30" fill="#94a3b8">opt-in</text>
+  </g>
+
+  <!-- Static edges -->
+  <g class="edge" marker-end="url(#arrow)">
+    <use href="#e-req"/><use href="#e-poll"/><use href="#e-ingest"/><use href="#e-prof"/><use href="#e-ast"/>
+    <use href="#e-tp"/><use href="#e-cd"/><use href="#e-tp2"/><use href="#e-cd2"/><use href="#e-score"/>
+    <use href="#e-run2"/><use href="#e-rep"/><use href="#e-back"/>
+  </g>
+  <use href="#e-run" class="edge" stroke="#78350f" marker-end="url(#arrow)"/>
+
+  <!-- Flowing dashes on top of the edges -->
+  <use href="#e-req" class="flow" stroke="#60a5fa"/>
+  <use href="#e-poll" class="flow" stroke="#4ade80"/>
+  <use href="#e-ingest" class="flow" stroke="#60a5fa"/>
+  <use href="#e-prof" class="flow" stroke="#a78bfa"/>
+  <use href="#e-ast" class="flow" stroke="#a78bfa"/>
+  <use href="#e-tp" class="flow" stroke="#a78bfa"/>
+  <use href="#e-cd" class="flow" stroke="#22d3ee"/>
+  <use href="#e-tp2" class="flow" stroke="#a78bfa"/>
+  <use href="#e-cd2" class="flow" stroke="#22d3ee"/>
+  <use href="#e-score" class="flow" stroke="#4ade80"/>
+  <use href="#e-run" class="flow slow" stroke="#f59e0b"/>
+  <use href="#e-run2" class="flow slow" stroke="#f59e0b"/>
+  <use href="#e-rep" class="flow" stroke="#4ade80"/>
+  <use href="#e-back" class="flow slow" stroke="#4ade80"/>
+
+  <!-- Travelling packets -->
+  <g filter="url(#glow)">
+    <circle r="5" fill="#93c5fd"><animateMotion dur="1.2s" repeatCount="indefinite" begin="0s"><mpath href="#e-req"/></animateMotion></circle>
+    <circle r="5" fill="#93c5fd"><animateMotion dur="2.4s" repeatCount="indefinite" begin="0.3s"><mpath href="#e-ingest"/></animateMotion></circle>
+    <circle r="5" fill="#c4b5fd"><animateMotion dur="0.9s" repeatCount="indefinite" begin="0.6s"><mpath href="#e-prof"/></animateMotion></circle>
+    <circle r="5" fill="#c4b5fd"><animateMotion dur="0.9s" repeatCount="indefinite" begin="0.9s"><mpath href="#e-ast"/></animateMotion></circle>
+    <circle r="5" fill="#c4b5fd"><animateMotion dur="1.0s" repeatCount="indefinite" begin="1.1s"><mpath href="#e-tp"/></animateMotion></circle>
+    <circle r="5" fill="#67e8f9"><animateMotion dur="1.0s" repeatCount="indefinite" begin="1.3s"><mpath href="#e-cd"/></animateMotion></circle>
+    <circle r="5" fill="#c4b5fd"><animateMotion dur="1.2s" repeatCount="indefinite" begin="1.5s"><mpath href="#e-tp2"/></animateMotion></circle>
+    <circle r="5" fill="#67e8f9"><animateMotion dur="1.2s" repeatCount="indefinite" begin="1.7s"><mpath href="#e-cd2"/></animateMotion></circle>
+    <circle r="5" fill="#86efac"><animateMotion dur="2.2s" repeatCount="indefinite" begin="1.9s"><mpath href="#e-score"/></animateMotion></circle>
+    <circle r="5" fill="#86efac"><animateMotion dur="1.2s" repeatCount="indefinite" begin="2.2s"><mpath href="#e-rep"/></animateMotion></circle>
+    <circle r="5" fill="#86efac"><animateMotion dur="4.5s" repeatCount="indefinite" begin="2.4s"><mpath href="#e-back"/></animateMotion></circle>
+    <circle r="5" fill="#86efac"><animateMotion dur="1.2s" repeatCount="indefinite" begin="0.6s"><mpath href="#e-poll"/></animateMotion></circle>
+    <circle r="4" fill="#fcd34d"><animateMotion dur="2s" repeatCount="indefinite" begin="1s"><mpath href="#e-run"/></animateMotion></circle>
+  </g>
+
+  <!-- Edge labels -->
+  <g class="m lbl">
+    <text x="246" y="342">POST</text>
+    <text x="250" y="418">poll</text>
+    <text x="412" y="70">path guard · clone</text>
+    <text x="846" y="190" fill="#b45309">runTests</text>
+    <text x="410" y="702">GET /api/analysis/:id</text>
+  </g>
+
+  <!-- Nodes -->
+  <g class="t" filter="url(#shadow)">
+    <!-- Client -->
+    <rect class="node" x="40" y="320" width="200" height="110" rx="16" fill="#0b1324" stroke="#60a5fa" stroke-width="1.6"/>
+    <text class="title" x="60" y="352">React dashboard</text>
+    <text class="sub" x="60" y="375">Vite · Tailwind</text>
+    <text class="sub" x="60" y="394">5 views · live progress</text>
+    <text class="sub" x="60" y="413">MD / JSON export</text>
+
+    <!-- API -->
+    <rect class="node" x="300" y="320" width="200" height="110" rx="16" fill="#0b1324" stroke="#60a5fa" stroke-width="1.6" style="animation-delay:.4s"/>
+    <text class="title" x="320" y="352">Express API</text>
+    <text class="sub" x="320" y="375">zod validation</text>
+    <text class="sub" x="320" y="394">concurrency limit</text>
+    <text class="sub" x="320" y="413">serves the SPA too</text>
+
+    <!-- Pipeline -->
+    <rect class="node" x="560" y="40" width="280" height="80" rx="16" fill="#0b1324" stroke="#8b5cf6" stroke-width="1.6" style="animation-delay:.6s"/>
+    <text class="title" x="580" y="72">🛡  Secure ingestion</text>
+    <text class="sub" x="580" y="96">allowed roots · realpath · no shell</text>
+
+    <rect class="node" x="560" y="160" width="280" height="80" rx="16" fill="#0b1324" stroke="#8b5cf6" stroke-width="1.6" style="animation-delay:.9s"/>
+    <text class="title" x="580" y="192">🔎  Repository profiler</text>
+    <text class="sub" x="580" y="216">stack · package manager · test runner</text>
+
+    <rect class="node" x="560" y="280" width="280" height="80" rx="16" fill="#0b1324" stroke="#8b5cf6" stroke-width="1.6" style="animation-delay:1.2s"/>
+    <text class="title" x="580" y="312">🌳  Language adapters</text>
+    <text class="sub" x="580" y="336">ts-morph AST · Python · routes</text>
+
+    <rect class="node" x="540" y="410" width="150" height="90" rx="16" fill="#1e1b4b" stroke="#a78bfa" stroke-width="1.8" style="animation-delay:1.5s"/>
+    <text class="title" x="558" y="442">🧪 TestPilot</text>
+    <text class="sub" x="558" y="464">test mapping</text>
+    <text class="sub" x="558" y="482">gap detection</text>
+
+    <rect class="node" x="710" y="410" width="150" height="90" rx="16" fill="#082f49" stroke="#22d3ee" stroke-width="1.8" style="animation-delay:1.7s"/>
+    <text class="title" x="726" y="442">⚙️ ConfigDoctor</text>
+    <text class="sub" x="726" y="464">env · Docker · CI</text>
+    <text class="sub" x="726" y="482">ports · README</text>
+
+    <rect class="node" x="560" y="550" width="280" height="80" rx="16" fill="#0b1324" stroke="#22c55e" stroke-width="1.6" style="animation-delay:2s"/>
+    <text class="title" x="580" y="582">📊  Prioritization + score</text>
+    <text class="sub" x="580" y="606">severity × confidence → grade A–F</text>
+
+    <!-- Right column -->
+    <rect x="920" y="150" width="240" height="80" rx="16" fill="#1c1206" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="7 6"/>
+    <text class="title" x="940" y="182">▶  Test runner</text>
+    <text class="sub" x="940" y="206">local only · no lifecycle hooks</text>
+
+    <rect class="node" x="920" y="330" width="240" height="90" rx="16" fill="#0b1324" stroke="#22c55e" stroke-width="1.6" style="animation-delay:2.3s"/>
+    <text class="title" x="940" y="362">🗄  Analysis store</text>
+    <text class="sub" x="940" y="385">in-memory · capped at 50</text>
+    <text class="sub" x="940" y="404">status + structured results</text>
+
+    <rect class="node" x="920" y="500" width="240" height="80" rx="16" fill="#0b1324" stroke="#22c55e" stroke-width="1.6" style="animation-delay:2.6s"/>
+    <text class="title" x="940" y="532">📋  Health report</text>
+    <text class="sub" x="940" y="556">findings · fixes · test skeletons</text>
+  </g>
+</svg>

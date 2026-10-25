@@ -1,5 +1,5 @@
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import fg from 'fast-glob';
 import { readFileSafe, fileExists, isSecretName } from '../utils/security';
 import type {
@@ -24,7 +24,7 @@ function issue(
   extras: Partial<ConfigIssue> = {},
 ): ConfigIssue {
   return {
-    id: uuidv4(),
+    id: randomUUID(),
     severity,
     confidence,
     category,
@@ -38,8 +38,19 @@ function issue(
 
 // ─── ENV var analysis ─────────────────────────────────────────────────────────
 
-const ENV_USAGE_RE = /process\.env\.([A-Z_][A-Z0-9_]*)/g;
-const ENV_DEFINE_NAME_RE = /^([A-Z_][A-Z0-9_]*)(?:\s*=.*)?$/;
+/** How application code reads environment variables (Node, Vite, and Python). */
+const ENV_USAGE_PATTERNS: RegExp[] = [
+  /process\.env\.([A-Z_][A-Z0-9_]*)/g,
+  /process\.env\[\s*['"`]([A-Z_][A-Z0-9_]*)['"`]\s*\]/g,
+  /import\.meta\.env\.([A-Z_][A-Z0-9_]*)/g,
+  /os\.environ\[\s*['"]([A-Z_][A-Z0-9_]*)['"]\s*\]/g,
+  /os\.(?:environ\.get|getenv)\(\s*['"]([A-Z_][A-Z0-9_]*)['"]/g,
+];
+/** Variables Vite always defines on import.meta.env. */
+const VITE_BUILTIN_ENV = new Set(['MODE', 'DEV', 'PROD', 'SSR', 'BASE_URL']);
+const ENV_DEFINE_NAME_RE = /^(?:export\s+)?([A-Z_][A-Z0-9_]*)(?:\s*=.*)?$/;
+const ENV_TEMPLATE_GLOBS = ['**/.env.example', '**/.env.sample', '**/.env.template', '**/.env.defaults'];
+const ENV_GLOB_IGNORE = ['**/node_modules/**', '**/.git/**', '**/dist/**', '**/build/**'];
 
 function parseEnvNames(content: string): string[] {
   return content
@@ -63,10 +74,10 @@ export async function analyzeEnvVars(
   const used = new Map<string, Set<string>>();
   const defaults = new Set<string>();
 
-  const envFiles = await fg(
-    ['.env.example', '.env.sample', '.env.template', '.env.defaults'],
-    { cwd: repoPath, absolute: false, dot: true }
-  );
+  // Templates may live next to each package in a monorepo (e.g. backend/.env.example).
+  const envFiles = await fg(ENV_TEMPLATE_GLOBS, {
+    cwd: repoPath, absolute: false, dot: true, ignore: ENV_GLOB_IGNORE, deep: 4,
+  });
 
   for (const relPath of envFiles) {
     const content = readFileSafe(path.join(repoPath, relPath));
@@ -74,7 +85,7 @@ export async function analyzeEnvVars(
     for (const name of parseEnvNames(content)) {
       if (!defined.has(name)) defined.set(name, new Set());
       defined.get(name)!.add(relPath);
-      const line = content.split('\n').find((l) => l.startsWith(`${name}=`));
+      const line = content.split('\n').map((l) => l.trim().replace(/^export\s+/, '')).find((l) => l.startsWith(`${name}=`));
       if (line && line.split('=').slice(1).join('=').trim()) defaults.add(name);
     }
   }
@@ -82,14 +93,19 @@ export async function analyzeEnvVars(
   for (const relPath of sourceFiles.slice(0, 300)) {
     const content = readFileSafe(path.join(repoPath, relPath));
     if (!content) continue;
-    const re = new RegExp(ENV_USAGE_RE.source, 'g');
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(content)) !== null) {
-      const name = m[1];
-      if (!used.has(name)) used.set(name, new Set());
-      used.get(name)!.add(relPath);
-      const after = content.slice(m.index + m[0].length, m.index + m[0].length + 25);
-      if (/^\s*(?:\?\?|[|][|])/.test(after)) defaults.add(name);
+    for (const pattern of ENV_USAGE_PATTERNS) {
+      const re = new RegExp(pattern.source, 'g');
+      const isVite = pattern.source.startsWith('import');
+      let m: RegExpExecArray | null;
+      while ((m = re.exec(content)) !== null) {
+        const name = m[1];
+        if (isVite && VITE_BUILTIN_ENV.has(name)) continue;
+        if (!used.has(name)) used.set(name, new Set());
+        used.get(name)!.add(relPath);
+        const after = content.slice(m.index + m[0].length, m.index + m[0].length + 25);
+        // JS: `?? fallback` / `|| fallback`; Python: getenv('X', fallback) / environ.get('X', fallback)
+        if (/^\s*(?:\?\?|[|][|])/.test(after) || /^['"]\s*,/.test(after)) defaults.add(name);
+      }
     }
   }
 
@@ -127,7 +143,7 @@ export async function analyzeEnvVars(
         `Add \`${name}=${secret ? '<secret>' : '<value>'}\` to your .env.example file.`,
         {
           evidence: [`Used in: ${usedIn.slice(0, 3).join(', ')}`],
-          whyDoctorDevBelievesThis: `Found references to process.env.${name} across application files (${usedIn.slice(0, 2).join(', ')}), but no definition in configuration templates.`,
+          whyDoctorDevBelievesThis: `Found references to ${name} across application files (${usedIn.slice(0, 2).join(', ')}), but no definition in configuration templates.`,
           whyUncertain: defaults.has(name) ? 'May have runtime fallback in application code.' : undefined,
         },
       ));
@@ -208,7 +224,7 @@ export async function analyzePortsAndDocker(
       }
 
       // 3. Env fallback
-      const envPort = line.match(/process\.env\.PORT\s*(?:\|\||\?\?)\s*(\d{2,5})/i);
+      const envPort = line.match(/process\.env\.PORT\s*(?:\|\||\?\?)\s*['"`]?(\d{2,5})/i);
       if (envPort) {
         const port = parseInt(envPort[1], 10);
         if (port >= PORT_RANGE.min && port <= PORT_RANGE.max) {
@@ -238,22 +254,6 @@ export async function analyzePortsAndDocker(
     .map((m) => m.port);
 
   const appPortSet = new Set(appListenPorts);
-  const dockerPortSet = new Set(dockerExposePorts);
-  const mismatchedPorts = Array.from(appPortSet).filter((p) => dockerPortSet.size > 0 && !dockerPortSet.has(p));
-
-  if (mismatchedPorts.length > 0 && dockerPortSet.size > 0) {
-    issues.push(issue(
-      'medium', 0.8, 'ports',
-      `Port mismatch between application server and Docker EXPOSE`,
-      `Application server binds to port(s) ${[...appPortSet].join(', ')} but Dockerfile exposes port(s) ${[...dockerPortSet].join(', ')}.`,
-      `Align port configuration across application code, Dockerfile, and environment variables.`,
-      {
-        evidence: mismatchedPorts.map((p) => `Server listen port ${p} not exposed in Dockerfile (${[...dockerPortSet].join(', ')})`),
-        whyDoctorDevBelievesThis: `Application code explicitly listens on port ${[...appPortSet].join(', ')} while Docker configuration uses ${[...dockerPortSet].join(', ')}.`,
-        whyUncertain: 'May be overridden dynamically at container runtime via environment variables.',
-      },
-    ));
-  }
 
   // Docker-specific checks
   const dockerfiles = profile.configFiles.filter((f) =>
@@ -280,12 +280,12 @@ export async function analyzePortsAndDocker(
         ));
       }
 
-      // Check: EXPOSE port matches app port
+      // Check: EXPOSE port matches a port the application listens on
       const exposeMatch = nonCommentContent.match(/^EXPOSE\s+(\d+)/m);
       if (exposeMatch) {
         const exposedPort = parseInt(exposeMatch[1], 10);
         const appPort = appListenPorts[0];
-        if (appPort && exposedPort !== appPort) {
+        if (appPort && !appPortSet.has(exposedPort)) {
           issues.push(issue(
             'medium', 0.85, 'docker',
             `Dockerfile EXPOSE port (${exposedPort}) does not match application port (${appPort})`,
@@ -315,7 +315,9 @@ export async function analyzePortsAndDocker(
         ?? readFileSafe(path.join(repoPath, '.env.sample'))
         ?? '';
       const requiredVars = parseEnvNames(envExampleContent);
-      if (requiredVars.length > 0) {
+      // `env_file:` passes every variable from the file through, so nothing is missing.
+      const usesEnvFile = /^\s*env_file\s*:/m.test(content);
+      if (requiredVars.length > 0 && !usesEnvFile) {
         // Extract env var names defined in docker-compose environment blocks
         const composeEnvRe = /^\s{6,}([A-Z_][A-Z0-9_]*)[:=]/gm;
         const composeVars = new Set<string>();
@@ -361,8 +363,8 @@ export async function analyzeCi(
     if (!content) continue;
 
     const ciNonCommentContent = content.split('\n').filter((l) => !l.trimStart().startsWith('#')).join('\n');
-    const hasTestInCi = /npm (run )?test|yarn test|pnpm test|vitest|jest|mocha/.test(ciNonCommentContent);
-    const hasInstall = /npm (ci|install)|yarn install|pnpm install/.test(ciNonCommentContent);
+    const hasTestInCi = /npm (run )?test|npm t\b|yarn (run )?test|pnpm (run )?test|bun (run )?test|vitest|jest|mocha|pytest/.test(ciNonCommentContent);
+    const hasInstall = /npm (ci|install|i)\b|yarn( install)?\s*$|yarn install|pnpm (install|i)\b|bun install|pip install|poetry install|uv sync/m.test(ciNonCommentContent);
 
     if (hasTestInCi) {
       anyWorkflowRunsTests = true;
@@ -377,8 +379,17 @@ export async function analyzeCi(
         ));
       }
 
-      const nodeVersionMatch = content.match(/node-version[:\s]+['"]?(\d+)/i);
-      if (!nodeVersionMatch) {
+      // Versions can be a scalar (`node-version: 20`), a matrix list (`node-version: [18, 20]`),
+      // or come from a file (`node-version-file: .nvmrc`). The lowest listed version is compared.
+      const nodeVersionLine = ciNonCommentContent.match(/node-version\s*:\s*(.+)/i)?.[1] ?? '';
+      // Only the major version of each entry counts ('18.17.0' → 18).
+      const listedVersions = nodeVersionLine.split(',')
+        .map((part) => part.match(/(\d+)/)?.[1])
+        .filter((v): v is string => v !== undefined)
+        .map((v) => parseInt(v, 10));
+      const pinsNodeVersion = nodeVersionLine.trim().length > 0 || /node-version-file\s*:/i.test(ciNonCommentContent);
+      const lowestCiNode = listedVersions.length > 0 ? Math.min(...listedVersions) : undefined;
+      if (!pinsNodeVersion) {
         if (profile.nodeVersion) {
           issues.push(issue(
             'low', 0.7, 'ci',
@@ -388,8 +399,8 @@ export async function analyzeCi(
             { filePath: ciFile },
           ));
         }
-      } else if (profile.nodeVersion) {
-        const ciNode = parseInt(nodeVersionMatch[1], 10);
+      } else if (profile.nodeVersion && lowestCiNode !== undefined) {
+        const ciNode = lowestCiNode;
         const requiredMatch = profile.nodeVersion.match(/(\d+)/);
         if (requiredMatch) {
           const requiredNode = parseInt(requiredMatch[1], 10);
@@ -442,7 +453,10 @@ export function analyzeDocumentation(
   const lower = content.toLowerCase();
 
   // Check if README mentions install
-  if (!lower.includes('npm install') && !lower.includes('yarn install') && !lower.includes('pnpm install')) {
+  const installCommands = ['npm install', 'npm ci', 'npm i ', 'yarn install', 'pnpm install', 'bun install',
+    'pip install', 'poetry install', 'uv sync', 'go mod download', 'go build', 'cargo build', 'bundle install',
+    'composer install', 'mvn install', 'gradle build', 'install:all'];
+  if (!installCommands.some((cmd) => lower.includes(cmd))) {
     issues.push(issue(
       'info', 0.8, 'documentation',
       'README does not document how to install dependencies',
@@ -454,7 +468,8 @@ export function analyzeDocumentation(
 
   // Check if README mentions test command
   const hasTestScript = Object.keys(profile.scripts).some((k) => k === 'test');
-  if (hasTestScript && !lower.includes('npm test') && !lower.includes('npm run test') && !lower.includes('yarn test')) {
+  const testCommands = ['npm test', 'npm run test', 'yarn test', 'pnpm test', 'bun test', 'npx vitest', 'npx jest'];
+  if (hasTestScript && !testCommands.some((cmd) => lower.includes(cmd))) {
     issues.push(issue(
       'info', 0.75, 'documentation',
       'README does not document how to run tests',
@@ -511,39 +526,40 @@ export function analyzeDocumentation(
 export function analyzeRuntime(
   repoPath: string,
   profile: RepositoryProfile,
+  envVars: EnvVarInfo[] = [],
 ): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
 
-  // Missing test script
-  if (!profile.scripts['test']) {
-    issues.push(issue(
-      'medium', 0.95, 'scripts',
-      'No "test" script defined in package.json',
-      'The project does not have a `test` script in package.json. Running `npm test` will fail.',
-      'Add a `"test"` script to package.json (e.g., `"test": "jest"` or `"test": "vitest run"`).',
-      { filePath: 'package.json' },
-    ));
+  // package.json scripts only make sense for Node projects
+  const hasPackageJson = fileExists(path.join(repoPath, 'package.json'));
+  if (hasPackageJson && !profile.scripts['test']) {
+    const installedFramework = ['jest', 'vitest', 'mocha'].find((fw) => profile.devDependencies[fw]);
+    if (installedFramework) {
+      issues.push(issue(
+        'medium', 0.9, 'scripts',
+        'Test framework installed but no test script configured',
+        `\`${installedFramework}\` is listed in devDependencies but no \`test\` script is defined, so \`npm test\` will fail.`,
+        `Add \`"test": "${installedFramework === 'vitest' ? 'vitest run' : installedFramework}"\` to the scripts in package.json.`,
+        { filePath: 'package.json', evidence: [`${installedFramework} in devDependencies but no test script`] },
+      ));
+    } else {
+      issues.push(issue(
+        'medium', 0.95, 'scripts',
+        'No "test" script defined in package.json',
+        'The project does not have a `test` script in package.json. Running `npm test` will fail.',
+        'Add a `"test"` script to package.json (e.g., `"test": "jest"` or `"test": "vitest run"`).',
+        { filePath: 'package.json' },
+      ));
+    }
   }
 
-  // Has test framework in devDeps but no test script
-  const hasTestFrameworkDep = ['jest', 'vitest', 'mocha'].some(
-    (fw) => profile.devDependencies[fw]
-  );
-  if (hasTestFrameworkDep && !profile.scripts['test']) {
-    issues.push(issue(
-      'medium', 0.9, 'scripts',
-      'Test framework installed but no test script configured',
-      'A test framework is listed in devDependencies but no `test` script is defined.',
-      'Configure the test script in package.json to use the installed framework.',
-      { filePath: 'package.json', evidence: ['Test framework in devDependencies but no test script'] },
-    ));
-  }
-
-  // .env.example exists check
+  // .env.example only matters when application code actually reads configuration variables
   const hasEnvExample = fileExists(path.join(repoPath, '.env.example')) ||
-    fileExists(path.join(repoPath, '.env.sample'));
+    fileExists(path.join(repoPath, '.env.sample')) ||
+    envVars.some((v) => v.definedIn.some((f) => /\.env\.(example|sample|template|defaults)$/.test(f)));
 
-  const usesEnv = profile.sourceFiles.length > 0; // simplified check — full check is done in env analysis
+  const usesEnv = envVars.some((v) => v.usedIn.length > 0
+    && (v.category === 'APPLICATION' || v.category === 'DATABASE' || v.category === 'SERVICE'));
   if (!hasEnvExample && usesEnv) {
     issues.push(issue(
       'low', 0.7, 'environment',
@@ -571,7 +587,7 @@ export async function runConfigDoctor(
   ]);
 
   const docIssues = analyzeDocumentation(repoPath, profile);
-  const runtimeIssues = analyzeRuntime(repoPath, profile);
+  const runtimeIssues = analyzeRuntime(repoPath, profile, envResult.envVars);
 
   const allIssues: ConfigIssue[] = [
     ...envResult.issues,
@@ -598,7 +614,8 @@ export async function runConfigDoctor(
     portMentions: portResult.portMentions,
     dockerfiles: portResult.dockerfiles,
     ciFiles: ciResult.ciFiles,
-    hasEnvExample: fileExists(path.join(repoPath, '.env.example')) || fileExists(path.join(repoPath, '.env.sample')),
+    hasEnvExample: fileExists(path.join(repoPath, '.env.example')) || fileExists(path.join(repoPath, '.env.sample'))
+      || envResult.envVars.some((v) => v.definedIn.length > 0),
     hasDotenv: profile.devDependencies['dotenv'] !== undefined || profile.dependencies['dotenv'] !== undefined,
     summary,
   };

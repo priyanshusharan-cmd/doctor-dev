@@ -7,10 +7,11 @@ function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
 
   function handleCopy() {
-    navigator.clipboard.writeText(text).then(() => {
+    // navigator.clipboard is undefined outside secure contexts (plain http on a LAN address).
+    navigator.clipboard?.writeText(text).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    });
+    }).catch(() => undefined);
   }
 
   return (

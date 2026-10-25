@@ -1,8 +1,11 @@
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { startAnalysis } from '../services/analysisService';
-import { getAnalysis, listAnalyses } from '../models/analysisStore';
+import { countActiveAnalyses, getAnalysis, listAnalyses } from '../models/analysisStore';
 import type { ApiError } from '../types';
+
+/** Analyses that may run at once; each one can clone a repository and parse its AST. */
+const MAX_CONCURRENT_ANALYSES = Math.max(1, parseInt(process.env.DOCTOR_DEV_MAX_CONCURRENT ?? '3', 10) || 3);
 
 const analyzeSchema = z.object({
   repositoryPath: z
@@ -23,7 +26,15 @@ export async function analyzeHandler(req: Request, res: Response): Promise<void>
   if (!parsed.success) {
     res.status(400).json({
       error: 'Invalid request body',
-      detail: parsed.error.errors.map((e) => e.message).join('; '),
+      detail: parsed.error.issues.map((e) => e.message).join('; '),
+    } satisfies ApiError);
+    return;
+  }
+
+  if (countActiveAnalyses() >= MAX_CONCURRENT_ANALYSES) {
+    res.status(429).json({
+      error: 'Too many analyses in progress',
+      detail: `Doctor Dev runs at most ${MAX_CONCURRENT_ANALYSES} analyses at once. Try again shortly.`,
     } satisfies ApiError);
     return;
   }

@@ -54,7 +54,7 @@ export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoad
     onAnalyze(repoPath.trim(), { runTests: isGitHub ? false : runTests, generateTests });
   }, [repoPath, runTests, generateTests, onAnalyze, isGitHub]);
 
-  function useExample(value: string) {
+  function applyExample(value: string) {
     setRepoPath(value);
     setShowExamples(false);
   }
@@ -80,6 +80,8 @@ export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoad
           <button
             type="button"
             onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="Open menu"
+            aria-expanded={menuOpen}
             className="flex items-center justify-center w-8 h-8 rounded-lg border border-gray-700 bg-gray-800/50 hover:bg-gray-700 hover:text-white text-gray-400 transition-colors focus:outline-none focus:ring-2 focus:ring-purple-500"
           >
             <FlaskConical className="w-4 h-4" />
@@ -128,7 +130,7 @@ export default function RepoSelector({ onAnalyze, onDemo, onHistoryClick, isLoad
                 <button
                   key={ex.value}
                   type="button"
-                  onClick={() => useExample(ex.value)}
+                  onClick={() => applyExample(ex.value)}
                   className="flex flex-col items-start gap-1 p-3 rounded-lg border border-gray-700/30 hover:border-gray-600/50 hover:bg-gray-700/20 transition-all group"
                 >
                   <span className="text-xs text-gray-300 font-medium group-hover:text-white transition-colors">{ex.label}</span>

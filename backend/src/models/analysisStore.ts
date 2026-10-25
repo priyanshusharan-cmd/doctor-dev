@@ -1,17 +1,42 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import type { Analysis, AnalysisStatus, AnalysisResult } from '../types';
+
+/** Finished analyses kept in memory; the oldest finished ones are evicted first. */
+const MAX_STORED_ANALYSES = 50;
 
 const store = new Map<string, Analysis>();
 
+function isFinished(a: Analysis): boolean {
+  return a.status === 'complete' || a.status === 'error';
+}
+
+/** Drop the oldest finished analyses so results cannot grow memory without bound. */
+function evictOldAnalyses(): void {
+  if (store.size <= MAX_STORED_ANALYSES) return;
+  // Map iteration follows insertion order, so the first finished entries are the oldest.
+  for (const [id, a] of store) {
+    if (store.size <= MAX_STORED_ANALYSES) break;
+    if (isFinished(a)) store.delete(id);
+  }
+}
+
+/** Number of analyses that are still running. */
+export function countActiveAnalyses(): number {
+  let active = 0;
+  for (const a of store.values()) if (!isFinished(a)) active++;
+  return active;
+}
+
 export function createAnalysis(repositoryPath: string): Analysis {
   const analysis: Analysis = {
-    id: uuidv4(),
+    id: randomUUID(),
     status: 'pending',
     statusLabel: 'Waiting to start',
     repositoryPath,
     createdAt: new Date().toISOString(),
   };
   store.set(analysis.id, analysis);
+  evictOldAnalyses();
   return analysis;
 }
 
@@ -48,4 +73,5 @@ export function setError(id: string, error: string): void {
   a.status = 'error';
   a.statusLabel = 'Analysis failed';
   a.error = error;
+  a.completedAt = new Date().toISOString();
 }

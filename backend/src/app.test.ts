@@ -76,6 +76,14 @@ describe('combined website and API', () => {
     expect(await response.json()).toMatchObject({ error: 'Invalid request body' });
   });
 
+  it('rejects malformed JSON as a client error', async () => {
+    const response = await fetch(`${base}/api/analyze`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{not json',
+    });
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Invalid JSON body' });
+  });
+
   it('keeps unknown APIs and missing analyses out of the SPA fallback', async () => {
     for (const route of ['/api/missing', '/api/analysis/missing']) {
       const response = await fetch(`${base}${route}`, { headers: { Accept: 'text/html' } });

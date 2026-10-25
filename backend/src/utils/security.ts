@@ -67,7 +67,7 @@ export function resolveRepoPath(inputPath: string): string {
 
   // Must exist
   if (!fs.existsSync(resolved)) {
-    throw new Error(`Repository path does not exist: ${resolved}`);
+    throw new Error(`Repository path does not exist: ${inputPath}`);
   }
 
   let realPath: string;
@@ -80,7 +80,7 @@ export function resolveRepoPath(inputPath: string): string {
   // Must be a directory (not a file, device, pipe, etc.)
   const stat = fs.statSync(realPath);
   if (!stat.isDirectory()) {
-    throw new Error(`Repository path must be a directory, got: ${realPath}`);
+    throw new Error(`Repository path must be a directory: ${inputPath}`);
   }
 
   const allowedRootsEnv = process.env.DOCTOR_DEV_ALLOWED_ROOTS;
@@ -101,14 +101,43 @@ export function resolveRepoPath(inputPath: string): string {
     throw new Error('Repository path is outside the allowed analysis roots');
   }
 
+  // GitHub clones are owned by their own analysis job. Letting a second request point
+  // at one would allow running an untrusted repository's test scripts on this server.
+  if (isManagedClonePath(realPath)) {
+    throw new Error('Repository path refers to a temporary clone managed by Doctor Dev');
+  }
+
   return realPath;
+}
+
+/** Prefix shared by every temporary directory that Doctor Dev clones into. */
+export const CLONE_DIR_PREFIX = 'doctor-dev-';
+
+/** True when the path is inside a temporary GitHub clone created by Doctor Dev. */
+export function isManagedClonePath(candidate: string): boolean {
+  let tmpRoot = path.resolve(os.tmpdir());
+  try {
+    tmpRoot = fs.realpathSync(tmpRoot);
+  } catch {
+    // Fall back to the unresolved temp directory
+  }
+  const relative = path.relative(tmpRoot, candidate);
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative)) return false;
+  const firstSegment = relative.split(path.sep)[0];
+  return firstSegment.startsWith(CLONE_DIR_PREFIX) && firstSegment.includes('__');
+}
+
+/** Remove credentials (user:token@) from a git remote URL so they are never displayed. */
+export function stripUrlCredentials(remote: string): string {
+  return remote.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@\s]+@/i, '$1');
 }
 
 /** Return the directory name as the project name. */
 export function repoName(repoPath: string): string {
   const base = path.basename(repoPath);
-  // Match doctor-dev-{userName}-{repoName}-{randomString}
-  const match = base.match(/^doctor-dev-(.+)-(.+)-[a-zA-Z0-9]+$/);
+  // GitHub clones are named doctor-dev-{owner}__{repo}-{random}. GitHub owners cannot
+  // contain underscores, so the double underscore separates owner and repo unambiguously.
+  const match = base.match(/^doctor-dev-([A-Za-z0-9-]+)__(.+)-[A-Za-z0-9]{6}$/);
   if (match) {
     return `${match[1]}/${match[2]}`;
   }

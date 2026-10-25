@@ -9,6 +9,7 @@ import type { ApiError } from './types';
 /** Create the API and serve the built frontend from the same HTTP server. */
 export function createApp(frontendDirectory = path.resolve(__dirname, '../../frontend/dist')): Express {
   const app = express();
+  app.disable('x-powered-by');
   app.use(cors({
     origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
     methods: ['GET', 'POST', 'DELETE'],
@@ -44,9 +45,15 @@ export function createApp(frontendDirectory = path.resolve(__dirname, '../../fro
   app.use((_req: Request, res: Response): void => {
     res.status(404).json({ error: 'Not found' } satisfies ApiError);
   });
-  app.use((_err: unknown, _req: Request, res: Response, next: NextFunction): void => {
+  app.use((err: unknown, _req: Request, res: Response, next: NextFunction): void => {
     if (res.headersSent) {
-      next(_err);
+      next(err);
+      return;
+    }
+    // body-parser marks malformed or oversized JSON with a 4xx status; that is the client's error.
+    const status = (err as { status?: unknown }).status;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      res.status(status).json({ error: status === 413 ? 'Request body too large' : 'Invalid JSON body' } satisfies ApiError);
       return;
     }
     res.status(500).json({ error: 'Internal server error' } satisfies ApiError);

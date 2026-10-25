@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 250" width="1200" height="250" role="img" aria-labelledby="title desc">
+  <title id="title">Doctor Dev analysis pipeline</title>
+  <desc id="desc">Animated progress through the seven analysis states: pending, scanning, analyzing code, analyzing tests, analyzing config, prioritizing, complete.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#070b14"/>
+      <stop offset="1" stop-color="#0f1530"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3b82f6"/>
+      <stop offset="0.5" stop-color="#8b5cf6"/>
+      <stop offset="1" stop-color="#22c55e"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="5" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <style>
+      .t { font-family: Inter, 'Segoe UI', -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; }
+      .m { font-family: 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="250" rx="24" fill="url(#bg)"/>
+  <text class="t" x="40" y="46" font-size="20" font-weight="800" fill="#f1f5f9">Analysis pipeline</text>
+  <text class="t" x="1160" y="46" font-size="13" fill="#64748b" text-anchor="end">poll GET /api/analysis/:id every 1.2s</text>
+
+  <!-- Connector track -->
+  <line x1="110" y1="118" x2="1090" y2="118" stroke="#1e293b" stroke-width="4" stroke-linecap="round"/>
+  <line x1="110" y1="118" x2="1090" y2="118" stroke="url(#bar)" stroke-width="4" stroke-linecap="round" stroke-dasharray="980" stroke-dashoffset="980" filter="url(#glow)">
+    <animate attributeName="stroke-dashoffset" values="980;0;0;980" keyTimes="0;0.8;0.95;1" dur="9s" repeatCount="indefinite"/>
+  </line>
+
+  <!-- Stage nodes: each lights up at its moment and stays lit until the loop restarts -->
+  <g class="t" text-anchor="middle">
+    <!-- x positions: 110 + i * 163.33 -->
+    <g transform="translate(110 118)">
+      <circle r="26" fill="#0b1324" stroke="#334155" stroke-width="2"/>
+      <circle r="26" fill="#1e3a8a" stroke="#60a5fa" stroke-width="2.5" opacity="0" filter="url(#glow)">
+        <animate attributeName="opacity" values="0;1;1;0" keyTimes="0;0.02;0.95;1" dur="9s" repeatCount="indefinite"/>
+      </circle>
+      <text y="6" font-size="17" fill="#e2e8f0">⏳</text>
+      <text class="m" y="62" font-size="13" fill="#94a3b8">pending</text>
+    </g>
+    <g transform="translate(273.3 118)">
+      <circle r="26" fill="#0b1324" stroke="#334155" stroke-width="2"/>
+      <circle r="26" fill="#1e3a8a" stroke="#60a5fa" stroke-width="2.5" opacity="0" filter="url(#glow)">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.133;0.15;0.95;1" dur="9s" repeatCount="indefinite"/>
+      </circle>
+      <text y="6" font-size="17" fill="#e2e8f0">📂</text>
+      <text class="m" y="62" font-size="13" fill="#94a3b8">scanning</text>
+    </g>
+    <g transform="translate(436.7 118)">
+      <circle r="26" fill="#0b1324" stroke="#334155" stroke-width="2"/>
+      <circle r="26" fill="#3b0764" stroke="#a78bfa" stroke-width="2.5" opacity="0" filter="url(#glow)">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.266;0.283;0.95;1" dur="9s" repeatCount="indefinite"/>
+      </circle>
+      <text y="6" font-size="17" fill="#e2e8f0">🌳</text>
+      <text class="m" y="62" font-size="13" fill="#94a3b8">analyzing_code</text>
+    </g>
+    <g transform="translate(600 118)">
+      <circle r="26" fill="#0b1324" stroke="#334155" stroke-width="2"/>
+      <circle r="26" fill="#3b0764" stroke="#a78bfa" stroke-width="2.5" opacity="0" filter="url(#glow)">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.4;0.417;0.95;1" dur="9s" repeatCount="indefinite"/>
+      </circle>
+      <text y="6" font-size="17" fill="#e2e8f0">🧪</text>
+      <text class="m" y="62" font-size="13" fill="#94a3b8">analyzing_tests</text>
+    </g>
+    <g transform="translate(763.3 118)">
+      <circle r="26" fill="#0b1324" stroke="#334155" stroke-width="2"/>
+      <circle r="26" fill="#083344" stroke="#22d3ee" stroke-width="2.5" opacity="0" filter="url(#glow)">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.533;0.55;0.95;1" dur="9s" repeatCount="indefinite"/>
+      </circle>
+      <text y="6" font-size="17" fill="#e2e8f0">⚙️</text>
+      <text class="m" y="62" font-size="13" fill="#94a3b8">analyzing_config</text>
+    </g>
+    <g transform="translate(926.7 118)">
+      <circle r="26" fill="#0b1324" stroke="#334155" stroke-width="2"/>
+      <circle r="26" fill="#422006" stroke="#f59e0b" stroke-width="2.5" opacity="0" filter="url(#glow)">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.666;0.683;0.95;1" dur="9s" repeatCount="indefinite"/>
+      </circle>
+      <text y="6" font-size="17" fill="#e2e8f0">📊</text>
+      <text class="m" y="62" font-size="13" fill="#94a3b8">prioritizing</text>
+    </g>
+    <g transform="translate(1090 118)">
+      <circle r="26" fill="#0b1324" stroke="#334155" stroke-width="2"/>
+      <circle r="26" fill="#052e16" stroke="#22c55e" stroke-width="2.5" opacity="0" filter="url(#glow)">
+        <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.8;0.817;0.95;1" dur="9s" repeatCount="indefinite"/>
+        <animate attributeName="r" values="26;26;31;26;26" keyTimes="0;0.8;0.84;0.88;1" dur="9s" repeatCount="indefinite"/>
+      </circle>
+      <text y="6" font-size="17" fill="#e2e8f0">✅</text>
+      <text class="m" y="62" font-size="13" fill="#94a3b8">complete</text>
+    </g>
+  </g>
+
+  <!-- Percentage readout -->
+  <g class="m" font-size="14" fill="#cbd5e1">
+    <text x="40" y="222">progress</text>
+    <rect x="130" y="210" width="900" height="14" rx="7" fill="#1e293b"/>
+    <rect x="130" y="210" width="0" height="14" rx="7" fill="url(#bar)">
+      <animate attributeName="width" values="45;180;360;540;702;828;900;900;45" keyTimes="0;0.133;0.266;0.4;0.533;0.666;0.8;0.95;1" dur="9s" repeatCount="indefinite" calcMode="discrete"/>
+    </rect>
+    <text x="1160" y="222" text-anchor="end" fill="#4ade80" opacity="0">done
+      <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.8;0.817;0.95;1" dur="9s" repeatCount="indefinite"/>
+    </text>
+  </g>
+</svg>

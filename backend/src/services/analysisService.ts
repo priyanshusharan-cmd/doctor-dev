@@ -3,7 +3,7 @@ import { resolveRepoPath, readFileSafe } from '../utils/security';
 import { analyzeRepository } from '../analyzers/repositoryAnalyzer';
 import { analyzeCode } from '../analyzers/codeAnalyzer';
 import { analyzeTests } from '../analyzers/configAnalyzer';
-import { buildTestMappings, findTestingGaps, generateTestForGap } from '../analyzers/testPilot';
+import { buildTestMappings, findTestingGaps, generateTestsForGaps } from '../analyzers/testPilot';
 import { runConfigDoctor } from '../analyzers/configDoctor';
 import { runTests, detectTestScript } from '../runners/testRunner';
 import { buildPriorityFindings, calculateHealthScore } from './prioritizationService';
@@ -31,17 +31,26 @@ export async function startAnalysis(
   rawPath: string,
   opts: { runTests?: boolean; generateTests?: boolean } = {},
 ): Promise<string> {
-  const isGitHub = isGitHubUrl(rawPath);
+  // An existing local directory wins over the GitHub short form, so a relative path such as
+  // "packages/api" is analyzed locally instead of being cloned from github.com/packages/api.
+  let localPath: string | null = null;
+  let localError: unknown;
+  try {
+    localPath = resolveRepoPath(rawPath);
+  } catch (err: unknown) {
+    localError = err;
+  }
+  const isGitHub = localPath === null && isGitHubUrl(rawPath);
+  if (localPath === null && !isGitHub) throw localError;
 
   // For GitHub URLs we create the analysis entry first (with the raw URL as path)
-  // and resolve the real path inside the background job.
-  const displayPath = isGitHub ? rawPath : resolveRepoPath(rawPath);
-  const analysis = createAnalysis(displayPath);
+  // and clone inside the background job.
+  const analysis = createAnalysis(localPath ?? rawPath.trim());
   const id = analysis.id;
 
-  runPipeline(id, rawPath, isGitHub, opts).catch((err: unknown) => {
+  runPipeline(id, localPath ?? rawPath, isGitHub, opts).catch((err: unknown) => {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error(`[doctor-dev] Analysis ${id} failed:`, msg);
+    process.stderr.write(`${JSON.stringify({ service: 'doctor-dev', event: 'analysis_failed', analysisId: id, error: msg })}\n`);
     setError(id, msg);
   });
 
@@ -64,7 +73,7 @@ async function runPipeline(
       clonedTmpDir = await cloneGitHubRepo(rawPath);
       repoPath = clonedTmpDir;
     } else {
-      repoPath = resolveRepoPath(rawPath);
+      repoPath = rawPath;
     }
 
     // ── 1. Scan files ──────────────────────────────────────────────────────
@@ -109,12 +118,13 @@ async function runPipeline(
     const testGaps = findTestingGaps(symbols, routes, testMappings, testProfile, sourceContents);
 
     // ── 4. Test generation (optional) ─────────────────────────────────────
-    const primaryFramework = repositoryProfile.testFrameworks[0] ?? 'jest';
+    const detectedFramework = repositoryProfile.testFrameworks[0];
+    const primaryFramework = detectedFramework && detectedFramework !== 'unknown' ? detectedFramework : 'jest';
     const generatedTests = (opts.generateTests !== false)
-      ? testGaps
-          .filter((g) => g.severity === 'critical' || g.severity === 'high')
-          .slice(0, 5)
-          .map((gap) => generateTestForGap(gap, primaryFramework, repoPath))
+      ? generateTestsForGaps(
+          testGaps.filter((g) => g.severity === 'critical' || g.severity === 'high').slice(0, 5),
+          primaryFramework,
+        )
       : [];
 
     // ── 5. Config analysis ────────────────────────────────────────────────

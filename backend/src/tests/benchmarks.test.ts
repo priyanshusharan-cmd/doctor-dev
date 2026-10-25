@@ -418,7 +418,7 @@ def test_login_failure():
     console.log('✓ Test 17 passed: Only direct, non-compound test runner commands are allowed.');
   }
 
-  console.log('\\nAll DoctorDev regression benchmarks passed successfully!');
+  console.log('\nAll DoctorDev regression benchmarks passed successfully!');
 }
 
 main().catch((err) => {

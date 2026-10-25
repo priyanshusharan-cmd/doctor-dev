@@ -1,20 +1,19 @@
 import path from 'path';
 import fs from 'fs';
 import { Project } from 'ts-morph';
-import fg from 'fast-glob';
-import { readFileSafe, relativePath, isSecretName } from '../utils/security';
+import { readFileSafe, relativePath } from '../utils/security';
 import type {
+  CoverageInfo,
   TestProfile,
   TestSuite,
   TestFramework,
   TestFrameworkEvidence,
-  EnvVarInfo,
   EnvVarCategory,
-  PortMention,
-  PortRole,
 } from '../types';
 
 // ─── Test file analysis ───────────────────────────────────────────────────────
+
+const JS_TS_FILE_RE = /\.(?:ts|tsx|js|jsx|mjs|cjs|mts|cts)$/i;
 
 const TEST_FRAMEWORK_IMPORTS: Record<string, TestFramework> = {
   'vitest': 'vitest',
@@ -191,8 +190,7 @@ export function analyzeTests(
   const suites: TestSuite[] = [];
   const coveredFiles = new Set<string>();
 
-  const coverageBase = detectCoverage(repoPath);
-  let coverage: any = coverageBase;
+  let coverage: CoverageInfo = detectCoverage(repoPath);
 
   if (testFiles.length === 0) {
     return {
@@ -243,7 +241,8 @@ export function analyzeTests(
     compilerOptions: { allowJs: true },
   });
 
-  for (const rel of testFiles.slice(0, 100)) {
+  // ts-morph only understands JavaScript/TypeScript; other languages are handled below.
+  for (const rel of testFiles.filter((f) => JS_TS_FILE_RE.test(f)).slice(0, 100)) {
     try {
       project.addSourceFileAtPath(path.join(repoPath, rel));
     } catch {
@@ -279,6 +278,25 @@ export function analyzeTests(
     });
   }
 
+  // Python suites: test names come from `def test_*` functions.
+  for (const rel of testFiles.filter((f) => f.endsWith('.py')).slice(0, 100)) {
+    const text = readFileSafe(path.join(repoPath, rel));
+    if (!text) continue;
+    const itBlocks = (text.match(/^\s*(?:async\s+)?def\s+test_[A-Za-z0-9_]+/gm) ?? [])
+      .map((m) => m.replace(/^\s*(?:async\s+)?def\s+/, ''))
+      .slice(0, 20);
+    const describeBlocks = (text.match(/^class\s+(Test[A-Za-z0-9_]*)/gm) ?? []).map((m) => m.replace(/^class\s+/, ''));
+    suites.push({
+      filePath: rel,
+      framework: 'pytest',
+      testCount: countTestsInText(text, rel),
+      describeBlocks,
+      itBlocks,
+      importsUnder: [],
+      inheritedFramework: false,
+    });
+  }
+
   if (coverage.status === 'UNAVAILABLE' && testFiles.length > 0) {
     coverage = {
       status: 'EVIDENCE_BASED',
@@ -300,8 +318,6 @@ export function analyzeTests(
 
 // ─── Env var analysis ─────────────────────────────────────────────────────────
 
-const ENV_USAGE_RE = /process\.env\.([A-Z_][A-Z0-9_]*)/g;
-const ENV_DEFINE_RE = /^([A-Z_][A-Z0-9_]*)(?:\s*=.*)?$/;
 
 export function categorizeEnvVar(name: string): EnvVarCategory {
   const upper = name.toUpperCase();
@@ -434,185 +450,13 @@ export function categorizeEnvVar(name: string): EnvVarCategory {
   return 'APPLICATION';
 }
 
-function parseEnvFile(content: string): string[] {
-  return content
-    .split('\n')
-    .map((l) => l.trim())
-    .filter((l) => l && !l.startsWith('#'))
-    .map((l) => {
-      const m = ENV_DEFINE_RE.exec(l);
-      return m ? m[1] : null;
-    })
-    .filter((n): n is string => n !== null);
-}
-
-export async function analyzeEnvVars(
-  repoPath: string,
-  sourceFiles: string[],
-): Promise<EnvVarInfo[]> {
-  const defined = new Map<string, Set<string>>();
-  const used = new Map<string, Set<string>>();
-  const defaults = new Set<string>();
-
-  const envFiles = await fg([
-    '.env.example', '.env.sample', '.env.template', '.env.defaults',
-    'docker-compose.yml', 'docker-compose.yaml',
-    '.github/workflows/*.yml', '.github/workflows/*.yaml',
-  ], { cwd: repoPath, absolute: false, dot: true });
-
-  for (const relPath of envFiles) {
-    const content = readFileSafe(path.join(repoPath, relPath));
-    if (!content) continue;
-
-    if (relPath.endsWith('.yml') || relPath.endsWith('.yaml')) {
-      const yamlEnvRe = /(?:^|\s{2,})([A-Z_][A-Z0-9_]*)\s*:/gm;
-      let m: RegExpExecArray | null;
-      while ((m = yamlEnvRe.exec(content)) !== null) {
-        const name = m[1];
-        if (!defined.has(name)) defined.set(name, new Set());
-        defined.get(name)!.add(relPath);
-      }
-    } else {
-      for (const name of parseEnvFile(content)) {
-        if (!defined.has(name)) defined.set(name, new Set());
-        defined.get(name)!.add(relPath);
-        const line = content.split('\n').find((l) => l.startsWith(`${name}=`));
-        if (line && line.split('=')[1]?.trim()) defaults.add(name);
-      }
-    }
-  }
-
-  for (const relPath of sourceFiles.slice(0, 300)) {
-    const content = readFileSafe(path.join(repoPath, relPath));
-    if (!content) continue;
-
-    let m: RegExpExecArray | null;
-    const re = new RegExp(ENV_USAGE_RE.source, 'g');
-    while ((m = re.exec(content)) !== null) {
-      const name = m[1];
-      if (!used.has(name)) used.set(name, new Set());
-      used.get(name)!.add(relPath);
-
-      const afterMatch = content.slice(m.index + m[0].length, m.index + m[0].length + 20);
-      if (/^\s*(?:\?\?|[|][|])/.test(afterMatch)) defaults.add(name);
-    }
-  }
-
-  const allNames = new Set([...defined.keys(), ...used.keys()]);
-  const results: EnvVarInfo[] = [];
-
-  for (const name of allNames) {
-    results.push({
-      name,
-      category: categorizeEnvVar(name),
-      definedIn: Array.from(defined.get(name) ?? []),
-      usedIn: Array.from(used.get(name) ?? []),
-      hasDefault: defaults.has(name),
-      isSecret: isSecretName(name),
-    });
-  }
-
-  return results.sort((a, b) => {
-    if (a.isSecret !== b.isSecret) return a.isSecret ? -1 : 1;
-    return a.name.localeCompare(b.name);
-  });
-}
-
 // ─── Contextual Port analysis ──────────────────────────────────────────────────
-
-const BACKLOG_VALUES = new Set([128, 256, 511, 512, 1024, 2048, 4096]);
-const VALID_PORTS = { min: 80, max: 65535 };
 
 /** Strip code comments so that numbers in comments don't create false port mentions */
 export function stripComments(content: string): string {
   return content
     .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/\/\/.*/g, '')
+    // Line comments, but not the `//` inside URLs such as http://localhost:3000
+    .replace(/(^|[^:])\/\/.*$/gm, '$1')
     .replace(/^#.*/gm, '');
-}
-
-/**
- * Find contextual port number mentions across config and source files.
- * Ignores RFC references, backlog values, benchmark counts, and comments.
- */
-export async function analyzePortMentions(
-  repoPath: string,
-  filePaths: string[],
-): Promise<PortMention[]> {
-  const mentions: PortMention[] = [];
-  const seen = new Set<string>();
-
-  for (const relPath of filePaths.slice(0, 150)) {
-    const rawContent = readFileSafe(path.join(repoPath, relPath));
-    if (!rawContent) continue;
-
-    const isDocker = /dockerfile|docker-compose/i.test(relPath);
-    const content = isDocker ? rawContent : stripComments(rawContent);
-    const lines = content.split('\n');
-
-    lines.forEach((line, idx) => {
-      // 1. Docker EXPOSE
-      const exposeMatch = line.match(/^\s*EXPOSE\s+(\d{2,5})/i);
-      if (exposeMatch) {
-        const port = parseInt(exposeMatch[1], 10);
-        if (port >= VALID_PORTS.min && port <= VALID_PORTS.max) {
-          const key = `${relPath}:${port}:${idx}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            mentions.push({
-              port,
-              filePath: relPath,
-              context: line.trim().slice(0, 80),
-              line: idx + 1,
-              role: 'docker_expose',
-              isServerListen: true,
-            });
-          }
-        }
-      }
-
-      // 2. Server listen: .listen(3000) or .listen({ port: 3000 })
-      const listenMatch = line.match(/\.listen\s*\(\s*(?:\{\s*port:\s*)?(\d{2,5})/i);
-      if (listenMatch) {
-        const port = parseInt(listenMatch[1], 10);
-        // Exclude backlog parameters like 511
-        if (port >= VALID_PORTS.min && port <= VALID_PORTS.max && !BACKLOG_VALUES.has(port)) {
-          const key = `${relPath}:${port}:${idx}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            mentions.push({
-              port,
-              filePath: relPath,
-              context: line.trim().slice(0, 80),
-              line: idx + 1,
-              role: 'server_listen',
-              isServerListen: true,
-            });
-          }
-        }
-      }
-
-      // 3. Env fallback: process.env.PORT || 3000
-      const envPortMatch = line.match(/process\.env\.PORT\s*(?:\|\||\?\?)\s*(\d{2,5})/i);
-      if (envPortMatch) {
-        const port = parseInt(envPortMatch[1], 10);
-        if (port >= VALID_PORTS.min && port <= VALID_PORTS.max) {
-          const key = `${relPath}:${port}:${idx}`;
-          if (!seen.has(key)) {
-            seen.add(key);
-            mentions.push({
-              port,
-              filePath: relPath,
-              context: line.trim().slice(0, 80),
-              line: idx + 1,
-              role: 'env_fallback',
-              isServerListen: true,
-            });
-          }
-        }
-      }
-    });
-  }
-
-  return mentions;
 }

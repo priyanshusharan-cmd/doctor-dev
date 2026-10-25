@@ -1,4 +1,5 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
+import path from 'node:path';
 import type {
   CodeSymbol,
   RouteInfo,
@@ -13,6 +14,13 @@ import type {
 } from '../types';
 
 // ─── Test Mapping ─────────────────────────────────────────────────────────────
+
+const GENERIC_FILE_NAMES = new Set(['index', 'main', 'app', 'server', 'utils', 'util', 'helpers', 'types', 'config', 'constants']);
+
+/** Remove the final extension: "src/foo.service.ts" → "src/foo.service". */
+function stripExtension(filePath: string): string {
+  return filePath.replace(/\.[^./\\]+$/, '');
+}
 
 /**
  * Map source files to their related test files using:
@@ -31,21 +39,27 @@ export function buildTestMappings(
     const evidence: string[] = [];
     let confidence = 0;
 
-    const sfBase = sf.replace(/\.(ts|tsx|js|jsx)$/, '').replace(/\\/g, '/');
+    const sfBase = stripExtension(sf).replace(/\\/g, '/');
     const sfName = sfBase.split('/').pop() ?? '';
+    // index.ts, app.ts, utils.ts, … exist in many folders, so a bare name match is not
+    // evidence on its own; those files additionally need a shared parent directory.
+    const isGenericName = GENERIC_FILE_NAMES.has(sfName.toLowerCase());
+    const sfParent = sfBase.split('/').slice(-2, -1)[0]?.toLowerCase();
 
     for (const suite of testProfile.suites) {
-      const suiteBase = suite.filePath.replace(/\.(ts|tsx|js|jsx)$/, '').replace(/\\/g, '/');
+      const suiteBase = stripExtension(suite.filePath).replace(/\\/g, '/');
 
       // Direct name match: foo.ts ↔ foo.test.ts
       const suiteBaseLower = suiteBase.toLowerCase();
       const sfNameLower = sfName.toLowerCase();
+      const sharesParent = !isGenericName || (sfParent !== undefined && suiteBaseLower.split('/').includes(sfParent));
       if (
+        sharesParent && (
         suiteBaseLower.endsWith(`/${sfNameLower}.test`) ||
         suiteBaseLower.endsWith(`/${sfNameLower}.spec`) ||
         suiteBaseLower.endsWith(`/${sfNameLower}`) ||
         suiteBaseLower.endsWith(`/${sfNameLower}_test`) ||
-        suiteBaseLower.endsWith(`/test_${sfNameLower}`)
+        suiteBaseLower.endsWith(`/test_${sfNameLower}`))
       ) {
         relatedTests.push(suite.filePath);
         evidence.push(`Direct file name match with ${suite.filePath}`);
@@ -268,7 +282,7 @@ export function findTestingGaps(
     const recommendedTests = detectRecommendedTests(sym, content, category);
 
     gaps.push({
-      id: uuidv4(),
+      id: randomUUID(),
       severity,
       confidence,
       category,
@@ -314,7 +328,7 @@ export function findTestingGaps(
 
     const isAuthRoute = AUTH_RE.test(route.path + (route.handlerName ?? ''));
     gaps.push({
-      id: uuidv4(),
+      id: randomUUID(),
       severity: isAuthRoute ? 'critical' : 'high',
       confidence: 0.85,
       category: 'no_test',
@@ -350,57 +364,118 @@ export function findTestingGaps(
 
 function frameworkImports(fw: TestFramework): string {
   switch (fw) {
-    case 'vitest': return `import { describe, it, expect, vi } from 'vitest';`;
-    case 'jest':   return `import { describe, it, expect, jest } from '@jest/globals';`;
-    case 'mocha':  return `import { describe, it } from 'mocha';\nimport assert from 'assert';`;
-    default:       return `import { describe, it, expect } from '@jest/globals';`;
+    case 'vitest':    return `import { describe, it, expect } from 'vitest';`;
+    case 'jest':      return `import { describe, it, expect } from '@jest/globals';`;
+    case 'mocha':     return `import { describe, it } from 'mocha';\nimport assert from 'node:assert';`;
+    case 'node-test': return `import { describe, it } from 'node:test';\nimport assert from 'node:assert';`;
+    default:          return `import { describe, it, expect } from '@jest/globals';`;
   }
 }
 
+/** Where a generated test for `targetFile` should live: src/a/b.ts → src/__tests__/a/b.test.ts */
+function testFilePathFor(targetFile: string): string {
+  const ext = path.posix.extname(targetFile);
+  const testExt = ext === '.tsx' ? '.test.tsx' : ext === '.jsx' ? '.test.jsx' : /^\.[mc]?js$/.test(ext) ? '.test.js' : '.test.ts';
+  const withoutSrc = targetFile.replace(/^src\//, '');
+  return `src/__tests__/${stripExtension(withoutSrc)}${testExt}`;
+}
+
+/** Import specifier from the generated test file to the file under test. */
+function importPathFor(testFile: string, targetFile: string): string {
+  const rel = path.posix.relative(path.posix.dirname(testFile), stripExtension(targetFile));
+  return rel.startsWith('.') ? rel : `./${rel}`;
+}
+
+/** The identifier to import for a symbol — `UserService.create` is imported as `UserService`. */
+function importableName(symbolName: string | undefined): string | undefined {
+  const head = symbolName?.split('.')[0];
+  return head && /^[A-Za-z_$][\w$]*$/.test(head) ? head : undefined;
+}
+
+function jsTestCases(gap: TestGap, framework: TestFramework): string {
+  const usesAssert = framework === 'mocha' || framework === 'node-test';
+  return gap.recommendedTests.map((t) => [
+    `  it(${JSON.stringify(t)}, () => {`,
+    `    // TODO: implement`,
+    usesAssert ? `    assert.ok(true);` : `    expect(true).toBe(true);`,
+    `  });`,
+  ].join('\n')).join('\n\n');
+}
+
+function pythonTestCases(gap: TestGap): string {
+  return gap.recommendedTests.map((t) => {
+    const fn = `test_${t.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '')}`.slice(0, 80);
+    return `def ${fn}():\n    # TODO: implement — ${t}\n    assert True`;
+  }).join('\n\n\n');
+}
+
 /**
- * Generate a test file skeleton for a given gap.
+ * Generate one test skeleton file per target source file, covering every gap in it.
+ * Gaps in the same file share one test file instead of producing duplicate paths.
+ * Never writes to disk and never overwrites existing tests.
+ */
+export function generateTestsForGaps(gaps: TestGap[], framework: TestFramework): GeneratedTest[] {
+  const byFile = new Map<string, TestGap[]>();
+  for (const gap of gaps) {
+    const list = byFile.get(gap.filePath) ?? [];
+    list.push(gap);
+    byFile.set(gap.filePath, list);
+  }
+
+  const generated: GeneratedTest[] = [];
+  for (const [targetFile, fileGaps] of byFile) {
+    if (targetFile.endsWith('.py')) {
+      const dir = path.posix.dirname(targetFile);
+      const module = stripExtension(targetFile).replace(/\//g, '.');
+      const names = [...new Set(fileGaps.map((g) => importableName(g.symbolName)).filter((n): n is string => !!n))];
+      const content = [
+        names.length > 0 ? `from ${module} import ${names.join(', ')}` : `import ${module}`,
+        '',
+        '',
+        fileGaps.map(pythonTestCases).join('\n\n\n'),
+        '',
+      ].join('\n');
+      generated.push({
+        gapId: fileGaps[0].id,
+        filePath: `tests/${dir === '.' ? '' : `${dir.replace(/^src\/?/, '')}/`}test_${path.posix.basename(stripExtension(targetFile))}.py`.replace(/\/\//g, '/'),
+        content,
+        targetFile,
+        targetSymbol: fileGaps[0].symbolName,
+        framework: 'pytest',
+      });
+      continue;
+    }
+
+    const testFile = testFilePathFor(targetFile);
+    const names = [...new Set(fileGaps.map((g) => importableName(g.symbolName)).filter((n): n is string => !!n))];
+    const importLine = names.length > 0
+      ? `import { ${names.join(', ')} } from '${importPathFor(testFile, targetFile)}';`
+      : `// Route handlers in ${targetFile} — exercise them through your HTTP test client (e.g. supertest).`;
+    const blocks = fileGaps.map((gap) => {
+      const title = gap.symbolName ?? gap.title.replace(/^[^:]+:\s*/, '');
+      return `describe(${JSON.stringify(title)}, () => {\n${jsTestCases(gap, framework)}\n});`;
+    });
+
+    generated.push({
+      gapId: fileGaps[0].id,
+      filePath: testFile,
+      content: `${frameworkImports(framework)}\n${importLine}\n\n${blocks.join('\n\n')}\n`,
+      targetFile,
+      targetSymbol: fileGaps[0].symbolName,
+      framework,
+    });
+  }
+  return generated;
+}
+
+/**
+ * Generate a test file skeleton for a single gap.
  * Does not overwrite existing tests.
  */
 export function generateTestForGap(
   gap: TestGap,
   framework: TestFramework,
-  repoPath: string,
+  _repoPath?: string,
 ): GeneratedTest {
-  const targetFile = gap.filePath;
-  const symbolName = gap.symbolName ?? 'subject';
-  const importPath = targetFile
-    .replace(/\.(ts|tsx|js|jsx)$/, '')
-    .replace(/^src\//, '../src/');
-
-  const testFileName = targetFile
-    .replace(/\.(ts|tsx|js|jsx)$/, '.test.ts')
-    .replace(/^src\//, 'src/__tests__/')
-    .replace(/^(?!src\/)/, 'src/__tests__/');
-
-  const imports = frameworkImports(framework);
-  const ext = framework === 'mocha' ? '' : '';
-
-  const cases = gap.recommendedTests.map((t) => {
-    if (framework === 'mocha') {
-      return `  it('${t}', () => {\n    // TODO: implement\n    assert.ok(true);\n  });`;
-    }
-    return `  it('${t}', () => {\n    // TODO: implement\n    expect(true).toBe(true);\n  });`;
-  }).join('\n\n');
-
-  const content = `${imports}
-import { ${symbolName} } from '${importPath}';
-
-describe('${symbolName}', () => {
-${cases}
-});
-`;
-
-  return {
-    gapId: gap.id,
-    filePath: testFileName,
-    content,
-    targetFile,
-    targetSymbol: gap.symbolName,
-    framework,
-  };
+  return generateTestsForGaps([gap], framework)[0];
 }

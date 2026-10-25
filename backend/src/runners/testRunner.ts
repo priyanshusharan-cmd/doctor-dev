@@ -17,30 +17,66 @@ export function detectTestScript(profile: RepositoryProfile): string | null {
   return null;
 }
 
-/** Classify a test failure's root cause category. */
-function classifyFailure(stdout: string, stderr: string): string {
-  const combined = `${stdout}\n${stderr}`.toLowerCase();
-  if (/cannot find module|module not found|no such file/.test(combined)) return 'configuration_issue';
-  if (/permission denied|eacces/.test(combined)) return 'environment_issue';
-  if (/typeerror|referenceerror|syntaxerror/.test(combined)) return 'possible_application_defect';
-  if (/assertion failed|expect|assert/.test(combined)) return 'possible_test_defect';
-  if (/timeout|timed out/.test(combined)) return 'possible_environment_issue';
-  return 'unknown';
+/** Pull a count such as "5 passed" out of a summary line. */
+function countIn(line: string, words: RegExp): number {
+  const m = line.match(new RegExp(`(\\d+)\\s+(?:tests?\\s+)?(?:${words.source})`, 'i'));
+  return m ? parseInt(m[1], 10) : 0;
+}
+
+/**
+ * Parse pass/fail/skip counts from Jest, Vitest, Mocha, and node:test output.
+ * Jest and Vitest print a "Test Suites"/"Test Files" line before the "Tests" line,
+ * so the per-test line is located first to avoid reporting suite counts.
+ */
+export function parseTestCounts(output: string): { passed: number; failed: number; skipped: number } {
+  // node:test (TAP) — "# pass 5", "# fail 1", "# skipped 2"
+  const tapPass = output.match(/^# pass (\d+)/m);
+  if (tapPass) {
+    const tapFail = output.match(/^# fail (\d+)/m);
+    const tapSkip = output.match(/^# skipped (\d+)/m);
+    return {
+      passed: parseInt(tapPass[1], 10),
+      failed: tapFail ? parseInt(tapFail[1], 10) : 0,
+      skipped: tapSkip ? parseInt(tapSkip[1], 10) : 0,
+    };
+  }
+
+  // Jest "Tests:  1 failed, 5 passed, 6 total" / Vitest " Tests  1 failed | 5 passed (6)"
+  const testsLine = output.match(/^\s*Tests:?\s+(.*\d.*)$/m)?.[1];
+  const summary = testsLine ?? output;
+  return {
+    passed: countIn(summary, /pass(?:ed|ing)?/),
+    failed: countIn(summary, /fail(?:ed|ing)?/),
+    skipped: countIn(summary, /skip(?:ped)?|pending|todo/),
+  };
 }
 
 /** Parse failed test names from Jest/Vitest output. */
-function parseFailures(stdout: string): Array<{ name: string; error: string }> {
+function parseFailures(output: string): Array<{ name: string; error: string }> {
   const failures: Array<{ name: string; error: string }> = [];
   // Jest/Vitest pattern: ● TestName › it description
   const re = /● (.+)\n\n([\s\S]+?)(?=\n● |\n\nTest Suites:|\n\nTests:|\nFailed|$)/g;
   let m: RegExpExecArray | null;
-  while ((m = re.exec(stdout)) !== null) {
+  while ((m = re.exec(output)) !== null) {
     failures.push({
       name: m[1].trim(),
       error: m[2].trim().slice(0, 500),
     });
   }
   return failures.slice(0, 20);
+}
+
+/**
+ * Environment for the child test process. The server's own environment (which can hold
+ * deployment secrets) is deliberately not inherited by the repository's test code.
+ */
+function testEnvironment(): NodeJS.ProcessEnv {
+  const passthrough = ['PATH', 'HOME', 'TMPDIR', 'TEMP', 'TMP', 'LANG', 'SystemRoot', 'APPDATA'];
+  const env: NodeJS.ProcessEnv = { CI: 'true', FORCE_COLOR: '0', NODE_ENV: 'test' };
+  for (const key of passthrough) {
+    if (process.env[key] !== undefined) env[key] = process.env[key];
+  }
+  return env;
 }
 
 /**
@@ -69,16 +105,20 @@ export async function runTests(
     };
   }
 
-  const pm = profile.packageManager === 'unknown' ? 'npm' : profile.packageManager;
-  const command = `${pm} run ${scriptKey}`;
+  // Run the validated script command directly instead of `npm run <script>`, so that
+  // package-manager lifecycle hooks such as "pretest" (which are never validated) do not run.
+  const command = profile.scripts[scriptKey].trim();
+  const [runner, ...args] = command.split(/\s+/);
   const start = Date.now();
 
   try {
-    const result = await execa(pm, ['run', scriptKey], {
+    const result = await execa(runner, args, {
       cwd: repoPath,
       timeout: MAX_DURATION_MS,
       reject: false, // don't throw on non-zero exit
-      env: { ...process.env, CI: 'true', FORCE_COLOR: '0' },
+      preferLocal: true, // resolve jest/vitest/mocha from the repository's node_modules/.bin
+      extendEnv: false,
+      env: testEnvironment(),
     });
 
     const duration = Date.now() - start;
@@ -86,18 +126,13 @@ export async function runTests(
     const stderr = result.stderr ?? '';
     const exitCode = result.exitCode ?? 0;
 
-    // Parse counts from output
-    const passedMatch = stdout.match(/(\d+)\s+(?:test(?:s)?\s+)?pass(?:ed)?/i);
-    const failedMatch = stdout.match(/(\d+)\s+(?:test(?:s)?\s+)?fail(?:ed)?/i);
-    const skippedMatch = stdout.match(/(\d+)\s+(?:test(?:s)?\s+)?(?:skip(?:ped)?|pend(?:ing)?)/i);
-
-    const passed = passedMatch ? parseInt(passedMatch[1], 10) : 0;
-    const failed = failedMatch ? parseInt(failedMatch[1], 10) : 0;
-    const skipped = skippedMatch ? parseInt(skippedMatch[1], 10) : 0;
+    // Jest writes its summary and failures to stderr, so parse both streams.
+    const combined = `${stdout}\n${stderr}`;
+    const { passed, failed, skipped } = parseTestCounts(combined);
     const testsRun = passed + failed + skipped;
 
-    const status: TestRunStatus = exitCode === 0 ? 'passed' : 'failed';
-    const failures = exitCode !== 0 ? parseFailures(stdout) : [];
+    const status: TestRunStatus = result.timedOut ? 'error' : exitCode === 0 ? 'passed' : 'failed';
+    const failures = exitCode !== 0 ? parseFailures(combined) : [];
 
     return {
       status,

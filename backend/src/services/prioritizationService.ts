@@ -1,4 +1,4 @@
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'node:crypto';
 import type {
   TestGap,
   ConfigIssue,
@@ -10,6 +10,9 @@ import type {
 } from '../types';
 
 // ─── Priority Findings ────────────────────────────────────────────────────────
+
+/** Title prefix TestPilot uses for untested API route gaps. */
+const ROUTE_GAP_PREFIX = 'API route not tested: ';
 
 /**
  * Combine test gaps and config issues into a prioritized finding list.
@@ -25,10 +28,10 @@ export function buildPriorityFindings(
   const criticalGaps = testGaps.filter((g) => g.severity === 'critical');
   if (criticalGaps.length > 0) {
     findings.push({
-      id: uuidv4(),
+      id: randomUUID(),
       level: 'critical',
-      title: `${criticalGaps.length} critical function(s) have no test coverage`,
-      description: `${criticalGaps.length} high-importance symbol(s) — including ${criticalGaps.slice(0, 2).map((g) => g.symbolName ?? g.filePath).join(', ')} — have no automated tests.`,
+      title: `${criticalGaps.length} critical testing gap(s) found`,
+      description: `${criticalGaps.length} critical code path(s) — including ${criticalGaps.slice(0, 2).map((g) => g.symbolName ?? g.title.replace(/^[^:]+:\s*/, '')).join(', ')} — lack adequate automated tests.`,
       category: 'testing',
       recommendation: 'Add unit tests for these functions, starting with the happy path and then error paths.',
       estimatedImpact: 'A bug in untested critical code could cause production failures with no automated safety net.',
@@ -41,7 +44,7 @@ export function buildPriorityFindings(
   const criticalConfigIssues = configIssues.filter((i) => i.severity === 'critical' || i.severity === 'high');
   if (criticalConfigIssues.length > 0) {
     findings.push({
-      id: uuidv4(),
+      id: randomUUID(),
       level: criticalConfigIssues.some((i) => i.severity === 'critical') ? 'critical' : 'high',
       title: `${criticalConfigIssues.length} critical/high configuration issue(s) detected`,
       description: criticalConfigIssues.slice(0, 2).map((i) => i.title).join('; '),
@@ -58,7 +61,7 @@ export function buildPriorityFindings(
   const authGaps = testGaps.filter((g) => g.category === 'missing_auth_test');
   if (securityIssues.length > 0 || authGaps.length > 0) {
     findings.push({
-      id: uuidv4(),
+      id: randomUUID(),
       level: 'high',
       title: `Security-related gaps require attention`,
       description: [
@@ -74,13 +77,13 @@ export function buildPriorityFindings(
   }
 
   // ── API routes without tests ───────────────────────────────────────────────
-  const routeGaps = testGaps.filter((g) => g.category === 'no_test' && g.title.includes('API route'));
+  const routeGaps = testGaps.filter((g) => g.category === 'no_test' && g.title.startsWith(ROUTE_GAP_PREFIX));
   if (routeGaps.length > 0) {
     findings.push({
-      id: uuidv4(),
+      id: randomUUID(),
       level: 'high',
       title: `${routeGaps.length} API route(s) have no test coverage`,
-      description: `Routes including ${routeGaps.slice(0, 3).map((g) => g.title.replace('No test for: ', '')).join(', ')} are not covered by any detected test.`,
+      description: `Routes including ${routeGaps.slice(0, 3).map((g) => g.title.slice(ROUTE_GAP_PREFIX.length)).join(', ')} are not covered by any detected test.`,
       category: 'reliability',
       recommendation: 'Add integration tests for all API routes, covering success and error cases.',
       estimatedImpact: 'Untested API routes may silently break in production without any automated detection.',
@@ -93,7 +96,7 @@ export function buildPriorityFindings(
   const ciIssues = configIssues.filter((i) => i.category === 'ci');
   if (ciIssues.length > 0) {
     findings.push({
-      id: uuidv4(),
+      id: randomUUID(),
       level: 'medium',
       title: `CI/CD pipeline has ${ciIssues.length} issue(s)`,
       description: ciIssues.map((i) => i.title).join('; '),
@@ -131,9 +134,11 @@ export function calculateHealthScore(
   }
 
   let baseScore = 0;
-  if (testProfile.coverage.status === 'ACTUAL_COVERAGE') {
-    baseScore = testProfile.coverage.percentage ?? 80;
-  } else if (testProfile.coverage.status === 'EVIDENCE_BASED') {
+  if (testProfile.coverage.status === 'ACTUAL_COVERAGE' && testProfile.coverage.percentage !== undefined) {
+    baseScore = testProfile.coverage.percentage;
+  } else if (testProfile.coverage.status === 'EVIDENCE_BASED' || testProfile.coverage.status === 'ACTUAL_COVERAGE') {
+    // A coverage report without a parseable percentage is scored on test evidence,
+    // rather than assuming a coverage figure that was never measured.
     // Mature repos with thousands of test cases receive evidence-proportional base
     if (testProfile.totalTestCount > 100 || testProfile.totalTestFiles > 50) {
       baseScore = 80;

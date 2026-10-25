@@ -35,6 +35,13 @@ export default function HistoryDrawer({ isOpen, onClose, onSelect }: Props) {
     return () => { mounted = false; };
   }, [isOpen]);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return (
@@ -54,6 +61,7 @@ export default function HistoryDrawer({ isOpen, onClose, onSelect }: Props) {
           </div>
           <button 
             onClick={onClose}
+            aria-label="Close history"
             className="p-1 text-gray-500 hover:text-gray-300 transition-colors rounded-lg hover:bg-gray-800"
           >
             <X className="w-5 h-5" />

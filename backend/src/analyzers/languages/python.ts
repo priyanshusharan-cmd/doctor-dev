@@ -27,16 +27,26 @@ export const PythonAdapter: LanguageAdapter = {
       const lines = content.split('\n');
 
       let currentClass: string | null = null;
+      let classIndent = -1;
 
       lines.forEach((line, idx) => {
         const lineNum = idx + 1;
         const trimmed = line.trim();
+        const indent = line.length - line.trimStart().length;
+
+        // Leaving the class body: any code at or above the class's own indentation ends it.
+        // Blank lines, comments, and decorators don't end a class body.
+        if (currentClass && trimmed && !trimmed.startsWith('#') && !trimmed.startsWith('@') && indent <= classIndent) {
+          currentClass = null;
+          classIndent = -1;
+        }
 
         // 1. Class definition: class Foo(Bar):
         const classMatch = trimmed.match(/^class\s+([A-Za-z0-9_]+)(?:\(([^)]*)\))?:/);
         if (classMatch) {
           const className = classMatch[1];
           currentClass = className;
+          classIndent = indent;
           symbols.push({
             name: className,
             kind: 'class',

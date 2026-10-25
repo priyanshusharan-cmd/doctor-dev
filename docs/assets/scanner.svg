@@ -1,0 +1,107 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 460" width="1200" height="460" role="img" aria-labelledby="title desc">
+  <title id="title">How Doctor Dev finds problems</title>
+  <desc id="desc">A scan beam sweeps across a repository's files. TestPilot flags an untested payment function and an auth route without authorization tests; ConfigDoctor flags a Docker port mismatch and an undocumented secret.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b14"/>
+      <stop offset="1" stop-color="#120d2b"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#22d3ee" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#22d3ee" stop-opacity="0.22"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="3" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <clipPath id="editor"><rect x="40" y="70" width="620" height="350" rx="16"/></clipPath>
+    <style>
+      .t { font-family: Inter, 'Segoe UI', -apple-system, BlinkMacSystemFont, Helvetica, Arial, sans-serif; }
+      .m { font-family: 'JetBrains Mono', SFMono-Regular, Menlo, Consolas, monospace; font-size: 14px; }
+      .k { fill: #c084fc; } .f { fill: #60a5fa; } .s { fill: #86efac; } .c { fill: #475569; } .p { fill: #cbd5e1; } .n { fill: #fbbf24; }
+    </style>
+  </defs>
+
+  <rect width="1200" height="460" rx="28" fill="url(#bg)"/>
+  <text class="t" x="40" y="46" font-size="20" font-weight="800" fill="#f1f5f9">Evidence, not vibes</text>
+  <text class="t" x="680" y="46" font-size="14" fill="#64748b">every finding carries a file, a reason, and a confidence score</text>
+
+  <!-- Editor window -->
+  <rect x="40" y="70" width="620" height="350" rx="16" fill="#0b1120" stroke="#1e293b"/>
+  <circle cx="64" cy="92" r="6" fill="#ef4444"/><circle cx="84" cy="92" r="6" fill="#eab308"/><circle cx="104" cy="92" r="6" fill="#22c55e"/>
+  <text class="m" x="130" y="97" fill="#64748b" font-size="13">demo-repository/</text>
+
+  <g class="m" clip-path="url(#editor)">
+    <!-- Highlight bars that appear as the beam passes each flagged line -->
+    <rect x="40" y="128" width="620" height="26" fill="#ef4444" opacity="0">
+      <animate attributeName="opacity" values="0;0;0.16;0.16;0" keyTimes="0;0.14;0.18;0.92;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="40" y="206" width="620" height="26" fill="#f97316" opacity="0">
+      <animate attributeName="opacity" values="0;0;0.16;0.16;0" keyTimes="0;0.32;0.36;0.92;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="40" y="284" width="620" height="26" fill="#22d3ee" opacity="0">
+      <animate attributeName="opacity" values="0;0;0.16;0.16;0" keyTimes="0;0.5;0.54;0.92;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <rect x="40" y="362" width="620" height="26" fill="#eab308" opacity="0">
+      <animate attributeName="opacity" values="0;0;0.16;0.16;0" keyTimes="0;0.68;0.72;0.92;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+
+    <text x="60" y="146"><tspan class="c">12</tspan>  <tspan class="k">export async function</tspan> <tspan class="f">chargeRide</tspan><tspan class="p">(ride, card) {</tspan></text>
+    <text x="60" y="172"><tspan class="c">13</tspan>  <tspan class="p">  </tspan><tspan class="k">return</tspan> <tspan class="p">stripe.charges.create(...)</tspan></text>
+    <text x="60" y="198"><tspan class="c">  </tspan>  <tspan class="c">// src/payments/paymentService.ts</tspan></text>
+    <text x="60" y="224"><tspan class="c">08</tspan>  <tspan class="p">router.</tspan><tspan class="f">get</tspan><tspan class="p">(</tspan><tspan class="s">'/rides/history'</tspan><tspan class="p">, requireAuth, list)</tspan></text>
+    <text x="60" y="250"><tspan class="c">  </tspan>  <tspan class="c">// src/rides/ridesRouter.ts</tspan></text>
+    <text x="60" y="276"><tspan class="c">  </tspan></text>
+    <text x="60" y="302"><tspan class="c">05</tspan>  <tspan class="k">EXPOSE</tspan> <tspan class="n">8080</tspan>   <tspan class="c"># Dockerfile — app listens on 3000</tspan></text>
+    <text x="60" y="328"><tspan class="c">  </tspan></text>
+    <text x="60" y="354"><tspan class="c">  </tspan>  <tspan class="c">// src/auth/authRouter.ts</tspan></text>
+    <text x="60" y="380"><tspan class="c">21</tspan>  <tspan class="p">jwt.sign(user, process.env.</tspan><tspan class="n">JWT_SECRET</tspan><tspan class="p">)</tspan></text>
+
+    <!-- Scan beam -->
+    <rect x="40" y="0" width="620" height="70" fill="url(#beam)">
+      <animate attributeName="y" values="70;400;400" keyTimes="0;0.8;1" dur="8s" repeatCount="indefinite"/>
+    </rect>
+    <line x1="40" x2="660" stroke="#22d3ee" stroke-width="2" filter="url(#glow)">
+      <animate attributeName="y1" values="105;435;435" keyTimes="0;0.8;1" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="y2" values="105;435;435" keyTimes="0;0.8;1" dur="8s" repeatCount="indefinite"/>
+      <animate attributeName="opacity" values="1;1;0" keyTimes="0;0.8;0.82" dur="8s" repeatCount="indefinite"/>
+    </line>
+  </g>
+
+  <!-- Findings feed -->
+  <g class="t">
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.15;0.2;0.92;1" dur="8s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="40 0;40 0;0 0;0 0" keyTimes="0;0.15;0.2;1" dur="8s" repeatCount="indefinite"/>
+      <rect x="690" y="74" width="470" height="76" rx="14" fill="#1f0a0a" stroke="#ef4444" stroke-opacity="0.6"/>
+      <rect x="708" y="90" width="72" height="22" rx="6" fill="#7f1d1d"/><text x="744" y="106" font-size="12" font-weight="800" fill="#fecaca" text-anchor="middle">CRITICAL</text>
+      <text x="792" y="106" font-size="15" font-weight="700" fill="#f1f5f9">No test for: chargeRide</text>
+      <text x="708" y="134" font-size="13" fill="#94a3b8">🧪 TestPilot · payment logic · confidence 95%</text>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.33;0.38;0.92;1" dur="8s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="40 0;40 0;0 0;0 0" keyTimes="0;0.33;0.38;1" dur="8s" repeatCount="indefinite"/>
+      <rect x="690" y="162" width="470" height="76" rx="14" fill="#1f1206" stroke="#f97316" stroke-opacity="0.6"/>
+      <rect x="708" y="178" width="52" height="22" rx="6" fill="#7c2d12"/><text x="734" y="194" font-size="12" font-weight="800" fill="#fed7aa" text-anchor="middle">HIGH</text>
+      <text x="772" y="194" font-size="15" font-weight="700" fill="#f1f5f9">Auth route lacks 401/403 tests</text>
+      <text x="708" y="222" font-size="13" fill="#94a3b8">🧪 TestPilot · GET /rides/history · confidence 80%</text>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.51;0.56;0.92;1" dur="8s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="40 0;40 0;0 0;0 0" keyTimes="0;0.51;0.56;1" dur="8s" repeatCount="indefinite"/>
+      <rect x="690" y="250" width="470" height="76" rx="14" fill="#06182a" stroke="#22d3ee" stroke-opacity="0.6"/>
+      <rect x="708" y="266" width="70" height="22" rx="6" fill="#164e63"/><text x="743" y="282" font-size="12" font-weight="800" fill="#cffafe" text-anchor="middle">MEDIUM</text>
+      <text x="790" y="282" font-size="15" font-weight="700" fill="#f1f5f9">EXPOSE 8080 ≠ app port 3000</text>
+      <text x="708" y="310" font-size="13" fill="#94a3b8">⚙️ ConfigDoctor · Dockerfile · confidence 85%</text>
+    </g>
+    <g opacity="0">
+      <animate attributeName="opacity" values="0;0;1;1;0" keyTimes="0;0.69;0.74;0.92;1" dur="8s" repeatCount="indefinite"/>
+      <animateTransform attributeName="transform" type="translate" values="40 0;40 0;0 0;0 0" keyTimes="0;0.69;0.74;1" dur="8s" repeatCount="indefinite"/>
+      <rect x="690" y="338" width="470" height="76" rx="14" fill="#1c1606" stroke="#eab308" stroke-opacity="0.6"/>
+      <rect x="708" y="354" width="52" height="22" rx="6" fill="#713f12"/><text x="734" y="370" font-size="12" font-weight="800" fill="#fef08a" text-anchor="middle">HIGH</text>
+      <text x="772" y="370" font-size="15" font-weight="700" fill="#f1f5f9">JWT_SECRET is undocumented</text>
+      <text x="708" y="398" font-size="13" fill="#94a3b8">⚙️ ConfigDoctor · name only, value never read</text>
+    </g>
+  </g>
+</svg>

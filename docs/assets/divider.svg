@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 40" width="1200" height="40" role="img" aria-label="Section divider">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#3b82f6" stop-opacity="0"/>
+      <stop offset="0.3" stop-color="#3b82f6"/>
+      <stop offset="0.5" stop-color="#a78bfa"/>
+      <stop offset="0.7" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#22d3ee" stop-opacity="0"/>
+    </linearGradient>
+    <style>
+      .line { stroke-dasharray: 1300; stroke-dashoffset: 1300; animation: draw 4s ease-in-out infinite; }
+      @keyframes draw { 0% { stroke-dashoffset: 1300; } 55% { stroke-dashoffset: 0; } 100% { stroke-dashoffset: -1300; } }
+      @media (prefers-reduced-motion: reduce) { .line { animation: none; stroke-dashoffset: 0; } }
+    </style>
+  </defs>
+  <path d="M0 20 H520 l12 -14 l14 28 l16 -30 l14 26 l10 -10 H1200" fill="none" stroke="#1e293b" stroke-width="2"/>
+  <path class="line" d="M0 20 H520 l12 -14 l14 28 l16 -30 l14 26 l10 -10 H1200" fill="none" stroke="url(#g)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
